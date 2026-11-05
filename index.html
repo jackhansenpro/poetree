@@ -1,0 +1,1770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Poetree</title>
+<style>
+  :root {
+    --paper: #ebe8df;
+    --ink: #1d1b18;
+    --muted: #8a857a;
+    --line: #d6d1c4;
+    --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --serif: Georgia, "Times New Roman", serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--paper); color: var(--ink); overflow: hidden; }
+  body { font-family: var(--sans); }
+
+  .view { position: fixed; inset: 0; transition: opacity 0.6s; background: var(--paper); }
+  #garden { background: transparent; }
+  .hidden { opacity: 0; pointer-events: none; }
+
+  /* Corner labels, poster style */
+  .corner { position: absolute; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.4; z-index: 2; }
+  .tl { top: 22px; left: 26px; }
+  .tr { top: 22px; right: 26px; text-align: right; }
+  .bl { bottom: 22px; left: 26px; }
+  .br { bottom: 22px; right: 26px; text-align: right; }
+  .muted { color: var(--muted); }
+  .latin { text-transform: none; font-style: italic; letter-spacing: 0.02em; font-family: var(--serif); font-size: 14px; }
+  .link { all: unset; cursor: pointer; border-bottom: 1px solid currentColor; }
+  .link:hover { color: var(--muted); }
+  .link:disabled { opacity: 0.3; cursor: default; }
+  .stack { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+
+  /* The tree */
+  #stage { position: absolute; inset: 64px 0 56px 0; }
+  #tree { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* Choosing a tree */
+  #choose { display: flex; align-items: center; justify-content: center; z-index: 4; }
+  .choices { display: flex; flex-wrap: wrap; justify-content: center; gap: 28px clamp(28px, 5vw, 80px); max-width: 1100px; padding: 0 40px; }
+  .choice { all: unset; cursor: pointer; text-align: center; padding: 18px 6px; border-bottom: 1px solid transparent; transition: color 0.2s, border-color 0.2s; }
+  .choice .name { font-family: var(--serif); font-size: clamp(22px, 2.6vw, 32px); }
+  .choice .latin { display: block; margin-top: 8px; color: var(--muted); font-size: 16px; }
+  .choices:hover .choice:not(:hover):not(.picked) { color: #b5afa2; }
+  .choice.picked { border-bottom-color: var(--ink); }
+
+  /* Writing page */
+  #write { display: flex; justify-content: center; z-index: 4; }
+  .sheet { width: min(640px, 88vw); height: 100%; padding: 90px 0 90px; display: flex; flex-direction: column; gap: 18px; }
+  #title { font-family: var(--serif); font-size: 30px; border: none; background: transparent; outline: none; color: var(--ink); padding: 0; }
+  #title::placeholder, #poem::placeholder { color: #b5afa2; }
+  #poem { flex: 1; font-family: var(--serif); font-size: 19px; line-height: 1.75; border: none; background: transparent; outline: none; resize: none; color: var(--ink); padding: 0; }
+
+  /* Planting animation */
+  #veil { position: fixed; inset: 0; background: var(--paper); z-index: 5; }
+  #overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 6; }
+  #overlayText { font-family: var(--serif); width: min(640px, 88vw); max-height: 80vh; overflow: visible; white-space: pre-wrap; line-height: 1.6; color: var(--ink); }
+
+  /* Poetry bank */
+  #archive { z-index: 7; overflow: auto; }
+  .list { width: min(640px, 88vw); margin: 90px auto; font-family: var(--serif); }
+  .entry { display: flex; gap: 18px; padding: 12px 0; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 19px; }
+  .entry:hover { color: var(--muted); }
+  .entry .n { font-family: var(--sans); font-size: 12px; letter-spacing: 0.08em; color: var(--muted); width: 44px; padding-top: 5px; flex: none; }
+  .reading h2 { font-weight: normal; font-size: 30px; margin: 0 0 6px; }
+  .reading .meta { font-family: var(--sans); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .reading .body { white-space: pre-wrap; font-size: 19px; line-height: 1.75; margin-top: 24px; }
+
+  /* reading and editing a poem */
+  .link.small { font-family: var(--sans); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .readbar { display: flex; gap: 22px; margin-bottom: 28px; align-items: baseline; }
+  .reading .readbar:last-child { margin: 28px 0 0; }
+  .editTitle { display: block; width: 100%; font-family: var(--serif); font-size: 30px; border: none; border-bottom: 1px dashed var(--line); background: transparent; outline: none; color: var(--ink); padding: 14px 0 6px; }
+  .editText { display: block; width: 100%; min-height: 200px; margin-top: 18px; font-family: var(--serif); font-size: 19px; line-height: 1.75; border: none; background: transparent; outline: none; resize: none; color: var(--ink); padding: 0; overflow: hidden; }
+
+  /* backup page */
+  #backup { z-index: 7; display: flex; align-items: center; justify-content: center; }
+  .backupBox { width: min(560px, 88vw); font-family: var(--serif); font-size: 18px; line-height: 1.7; }
+  .backupBox p { margin: 0 0 22px; }
+  .backupBox .actions { display: flex; flex-direction: column; gap: 14px; margin: 34px 0 26px; font-family: var(--sans); font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; align-items: flex-start; }
+  .backupBox .status { font-family: var(--sans); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+
+  /* on pages that scroll, the corner labels stay put */
+  #forest .corner, #archive .corner { position: fixed; background: var(--paper); padding: 4px 6px; margin: -4px -6px; }
+
+  /* The forest of finished trees */
+  #forest { z-index: 7; overflow: auto; }
+  .grove { display: flex; flex-wrap: wrap; gap: 48px; justify-content: center; padding: 100px 40px 100px; }
+  .card { cursor: pointer; width: 250px; text-align: center; }
+  .card canvas { width: 250px; height: 330px; display: block; }
+  .card .name { font-family: var(--serif); font-size: 21px; margin-top: 12px; }
+  .card .latin { color: var(--muted); display: block; margin-top: 3px; }
+  .card .dates { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-top: 10px; }
+  .card:hover .name { color: var(--muted); }
+  .empty { font-family: var(--serif); font-style: italic; color: var(--muted); font-size: 18px; margin-top: 30vh; text-align: center; width: 100%; }
+
+  /* One finished tree, with its poems */
+  #treeDetail { z-index: 8; display: flex; }
+  #detailArt { flex: 1.3; position: relative; min-width: 0; }
+  #detailArt canvas { position: absolute; inset: 70px 10px 60px 10px; width: calc(100% - 20px); height: calc(100% - 130px); }
+  #detailPoems { flex: 1; overflow: auto; padding: 90px 50px 90px 20px; font-family: var(--serif); }
+  #detailPoems .entry { font-size: 17px; }
+
+  /* Testing tools (Shift + D, or ?dev in the address) */
+  #dev { position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 9; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; display: flex; gap: 14px; align-items: center; background: rgba(235,232,223,0.92); padding: 6px 12px; }
+/* Phones and narrow windows */
+@media (max-width: 600px) {
+  .corner { font-size: 11px; max-width: calc(50% - 30px); }
+  .tl, .tr { top: 18px; } .bl, .br { bottom: 18px; }
+  .tl, .bl { left: 20px; } .tr, .br { right: 20px; }
+  .latin { font-size: 13px; }
+  .stack { gap: 8px; }
+  #stage { inset: 70px 0 110px 0; }
+  #choose { align-items: flex-start; overflow: auto; }
+  #choose .corner { position: fixed; background: var(--paper); padding: 4px 6px; margin: -4px -6px; }
+  .choices { padding: 90px 20px 110px; gap: 6px 20px; }
+  .choice { padding: 12px 4px; }
+  .choice .name { font-size: 22px; }
+  .choice .latin { font-size: 14px; margin-top: 4px; }
+  .sheet { width: calc(100% - 40px); padding: 80px 0 100px; }
+  #title { font-size: 26px; }
+  #poem { font-size: 17px; }
+  .list { width: calc(100% - 40px); margin: 80px auto 110px; }
+  .entry { font-size: 17px; gap: 12px; }
+  .entry .n { width: 36px; }
+  #backup { align-items: flex-start; overflow: auto; }
+  .backupBox { padding: 80px 0 100px; font-size: 16px; }
+  .grove { gap: 36px; padding: 80px 20px 100px; }
+  #treeDetail { flex-direction: column; overflow: auto; }
+  #treeDetail .corner { position: fixed; background: var(--paper); padding: 4px 6px; margin: -4px -6px; }
+  #detailArt { flex: none; height: 62vh; }
+  #detailArt canvas { inset: 60px 10px 10px 10px; height: calc(100% - 70px); }
+  #detailPoems { flex: none; overflow: visible; padding: 10px 20px 100px; }
+  #dev { flex-wrap: wrap; justify-content: center; width: 92%; top: 60px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============ THE TREE ============ -->
+<section class="view" id="garden">
+  <div class="corner tl">Poetree<br><span class="latin muted" id="latinLabel"></span></div>
+  <div class="corner tr"><span id="dayLabel"></span><br><span class="muted" id="stageLabel"></span></div>
+  <div class="corner bl stack"><button class="link" id="openArchive"></button><button class="link" id="openForest"></button><button class="link" id="openBackup">Backup</button></div>
+  <div class="corner br" id="actionArea"></div>
+  <div id="stage"><canvas id="tree"></canvas></div>
+</section>
+
+<!-- ============ CHOOSE A TREE ============ -->
+<section class="view hidden" id="choose">
+  <div class="corner tl">Poetree<br><span class="muted">Choose a tree to grow</span></div>
+  <div class="corner bl"><button class="link" id="chooseBack">← Back</button></div>
+  <div class="corner br"><button class="link" id="chooseBegin" disabled>Begin growing →</button></div>
+  <div class="choices" id="choices"></div>
+</section>
+
+<!-- ============ WRITING PAGE ============ -->
+<section class="view hidden" id="write">
+  <div class="corner tl">Poem <span id="writeNumber"></span><br><span class="muted" id="writeDate"></span></div>
+  <div class="corner bl"><button class="link" id="backToTree">← Back to tree</button></div>
+  <div class="corner br"><span class="muted" id="wordCount"></span><br><button class="link" id="plant">Plant this poem →</button></div>
+  <div class="sheet">
+    <input id="title" placeholder="Untitled" maxlength="80" autocomplete="off">
+    <textarea id="poem" placeholder="Write a poem…"></textarea>
+  </div>
+</section>
+
+<!-- ============ PLANTING ANIMATION ============ -->
+<div id="veil" class="hidden"></div>
+<div id="overlay" class="hidden"><div id="overlayText"></div></div>
+
+<!-- ============ POETRY BANK ============ -->
+<section class="view hidden" id="archive">
+  <div class="corner tl">Poetree<br><span class="muted" id="archiveLabel">Your poems</span></div>
+  <div class="corner bl"><button class="link" id="archiveBack">← Back</button></div>
+  <div class="list" id="archiveList"></div>
+</section>
+
+<!-- ============ BACKUP ============ -->
+<section class="view hidden" id="backup">
+  <div class="corner tl">Poetree<br><span class="muted">Backup</span></div>
+  <div class="corner bl"><button class="link" id="backupBack">← Back to tree</button></div>
+  <div class="backupBox">
+    <p>Your trees and poems are saved in this browser, on this computer. Clearing your browser's data, or using a different browser or computer, won't bring them with you.</p>
+    <p>Download a backup now and then. You can restore it here, or in any other browser, to bring your whole forest back.</p>
+    <div class="actions">
+      <button class="link" id="downloadBackup">Download backup →</button>
+      <button class="link" id="restoreBackup">Restore from backup →</button>
+      <input type="file" id="restoreFile" accept=".json,application/json" hidden>
+    </div>
+    <div class="status" id="backupStatus"></div>
+  </div>
+</section>
+
+<!-- ============ THE FOREST ============ -->
+<section class="view hidden" id="forest">
+  <div class="corner tl">Poetree<br><span class="muted">Your forest</span></div>
+  <div class="corner bl"><button class="link" id="forestBack">← Back to tree</button></div>
+  <div class="grove" id="grove"></div>
+</section>
+
+<!-- ============ ONE FINISHED TREE ============ -->
+<section class="view hidden" id="treeDetail">
+  <div class="corner tl"><span id="detailName"></span><br><span class="latin muted" id="detailLatin"></span></div>
+  <div class="corner bl"><button class="link" id="detailBack">← Back to forest</button></div>
+  <div id="detailArt"><canvas id="detailCanvas"></canvas></div>
+  <div id="detailPoems"></div>
+</section>
+
+<div id="dev" style="display:none">
+  Preview <input type="range" id="devSlider" min="0" max="100" value="0"> <span id="devValue"></span>
+  <button class="link" id="devAdd1">+1 sample poem</button>
+  <button class="link" id="devAdd10">+10</button>
+  <button class="link" id="devReset">Reset all</button>
+</div>
+
+<script>
+// =====================================================================
+//  SETTINGS
+// =====================================================================
+const GOAL = 100;                 // poems until a tree is fully grown
+// phones get slightly smaller words, so the smaller tree keeps its detail
+const SMALL_SCREEN = (window.innerWidth || screen.width) < 600;
+const FONT_SIZE = SMALL_SCREEN ? 9 : 11; // size of the words in the tree
+const LINE = FONT_SIZE;                  // distance between rows of words
+const TREE_FONT = `${FONT_SIZE}px "Times New Roman", Times, serif`;
+const INK = "#1d1b18";
+// Three layers of words. Darker, shadowy parts of the tree get more layers on top of each other.
+const LAYERS = [
+  { threshold: 0.07, alpha: 0.78, dx: 0, dy: 0 },
+  { threshold: 0.42, alpha: 0.9, dx: 3, dy: LINE * 0.5 },
+  { threshold: 0.72, alpha: 1.0, dx: -2, dy: LINE * 0.25 },
+];
+const SPECIES_INFO = {
+  ponderosa:  { name: "Ponderosa pine", latin: "Pinus ponderosa",   young: "Young pine" },
+  blueoak:    { name: "Blue oak",       latin: "Quercus douglasii", young: "Young oak" },
+  sugarmaple: { name: "Sugar maple",    latin: "Acer saccharum",    young: "Young maple" },
+  redwood:    { name: "Coast redwood",  latin: "Sequoia sempervirens", young: "Young redwood" },
+  sycamore:   { name: "California sycamore", latin: "Platanus racemosa", young: "Young sycamore" },
+  liveoak:    { name: "Coast live oak", latin: "Quercus agrifolia", young: "Young oak" },
+  douglasfir: { name: "Douglas-fir",    latin: "Pseudotsuga menziesii", young: "Young fir" },
+  bluegum:    { name: "Blue gum eucalyptus", latin: "Eucalyptus globulus", young: "Young eucalyptus" },
+  madrone:    { name: "Pacific madrone", latin: "Arbutus menziesii", young: "Young madrone" },
+  baylaurel:  { name: "California bay laurel", latin: "Umbellularia californica", young: "Young bay laurel" },
+};
+const DPR = Math.min(2, window.devicePixelRatio || 1);
+const DEV = new URLSearchParams(location.search).has("dev");
+const STORAGE = "poetree.garden";
+const OLD_STORAGE = "poetree.pine";   // from before there were multiple trees
+
+const STOPWORDS = new Set(("a an the and or but if of to in on at by for with from as is are was were be been being it its it's " +
+  "this that these those i i'm me my we our you your he she they them his her their there here so not no do does did " +
+  "have has had will would can could just than then too very into over under up down out about all any some what when " +
+  "where who how which am im").split(" "));
+
+const FILLER_WORDS = ("river light morning hush ember quiet hollow amber sparrow lantern meadow thunder salt orchard " +
+  "silver window harbor velvet frost honey wander bloom candle shadow linen echo marrow willow tide ochre dusk " +
+  "kettle garden letter breath stone cedar moth violet hymn fever rust ash cloud mother distance wool feather " +
+  "sugar static paper bridge orbit autumn summer winter spring childhood blanket sunday").split(" ");
+
+// =====================================================================
+//  LITTLE HELPERS
+// =====================================================================
+const $ = (id) => document.getElementById(id);
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+
+function hash(text) {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+// Random numbers that are always the same for the same seed, so a tree keeps its shape
+function rng(seed) {
+  return function () {
+    seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const pick = (r, list) => list[Math.floor(r() * list.length)];
+function makeCanvas(w, h) { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; }
+function todayString(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function prettyDate(s) {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" });
+}
+function shortDate(s) {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+function wordsIn(text) { return text.match(/[\p{L}\p{N}'’-]+/gu) || []; }
+
+// Quietly picks the words a poem contributes to the tree (its most-used, then longest words)
+function pickKeywords(text) {
+  const seen = new Map();
+  wordsIn(text).forEach((w, i) => {
+    const k = w.toLowerCase().replace(/’/g, "'");
+    if (!seen.has(k)) seen.set(k, { word: k, count: 0, first: i });
+    seen.get(k).count++;
+  });
+  let list = [...seen.values()].filter((o) => !STOPWORDS.has(o.word) && o.word.length >= 3);
+  if (list.length < 3) list = [...seen.values()];
+  list.sort((a, b) => (b.count - a.count) || (b.word.length - a.word.length));
+  return list.slice(0, 16).sort((a, b) => a.first - b.first).map((o) => o.word);
+}
+
+// Measuring words
+const measurer = makeCanvas(10, 10).getContext("2d");
+measurer.font = TREE_FONT;
+const widthCache = new Map();
+function textWidth(s) {
+  let w = widthCache.get(s);
+  if (w === undefined) { w = measurer.measureText(s).width; widthCache.set(s, w); }
+  return w;
+}
+const SPACE = textWidth(" ") * 0.9;
+const MIN_RUN = textWidth("i") + 1;
+
+// =====================================================================
+//  SAVED DATA: a garden of trees, one of them growing right now
+// =====================================================================
+let garden = { trees: [], active: null };
+try { garden = JSON.parse(localStorage.getItem(STORAGE)) || garden; } catch (e) {}
+// bring over the ponderosa from before there were multiple trees (the old copy is left untouched)
+if (!garden.trees.length) {
+  try {
+    const old = JSON.parse(localStorage.getItem(OLD_STORAGE))?.poems || [];
+    if (old.length) {
+      garden.trees.push({ id: "t" + Date.now(), species: "ponderosa", started: old[0].date, poems: old });
+      garden.active = garden.trees[0].id;
+    }
+  } catch (e) {}
+}
+// the Mexican fan palm was replaced by the Pacific madrone: any palms become madrones (their poems are unchanged)
+function updateOldSpecies(g) { for (const t of Array.isArray(g.trees) ? g.trees : []) if (t && t.species === "fanpalm") t.species = "madrone"; }
+updateOldSpecies(garden);
+function saveGarden() { localStorage.setItem(STORAGE, JSON.stringify(garden)); }
+const activeTree = () => garden.trees.find((t) => t.id === garden.active) || null;
+let poems = activeTree()?.poems || [];
+let SPECIES = activeTree()?.species || "ponderosa";
+function savePoems() { saveGarden(); }
+
+// =====================================================================
+//  CANVAS SETUP (the tree is drawn at the real size of the screen)
+// =====================================================================
+const stage = $("stage");
+const canvas = $("tree");
+const ctx = canvas.getContext("2d");
+let SW = 0, SH = 0;                 // size of the area being drawn
+let paper = null;                   // background with film grain
+const shapeMap = makeCanvas(10, 10);
+const sctx = shapeMap.getContext("2d", { willReadFrequently: true });
+const SHAPE_SCALE = 0.5;            // the hidden shape map is drawn at half size
+
+function sizeShapeMap() {
+  shapeMap.width = Math.max(1, Math.ceil(SW * SHAPE_SCALE));
+  shapeMap.height = Math.max(1, Math.ceil(SH * SHAPE_SCALE));
+}
+function sizeCanvas() {
+  SW = stage.clientWidth; SH = stage.clientHeight;
+  canvas.width = Math.round(SW * DPR); canvas.height = Math.round(SH * DPR);
+  sizeShapeMap();
+  paper = makeCanvas(Math.max(1, canvas.width), Math.max(1, canvas.height));
+  const p = paper.getContext("2d");
+  p.fillStyle = "#ebe8df"; p.fillRect(0, 0, paper.width, paper.height);
+  const img = p.getImageData(0, 0, paper.width, paper.height), d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const n = (Math.random() - 0.5) * 14;
+    d[i] += n; d[i + 1] += n; d[i + 2] += n;
+  }
+  p.putImageData(img, 0, 0);
+}
+// Temporarily draw at another size / species (used for the forest pictures)
+let CENTER_TREE = true;             // lift a narrow-screen tree to the middle (off for forest cards)
+function withFrame(w, h, species, fn, center = true) {
+  const saved = [SW, SH, SPECIES, CENTER_TREE];
+  SW = w; SH = h; SPECIES = species; CENTER_TREE = center; sizeShapeMap();
+  try { return fn(); } finally { [SW, SH, SPECIES, CENTER_TREE] = saved; sizeShapeMap(); }
+}
+
+// =====================================================================
+//  TREE SHAPES
+//  These are never shown. Each draws a hidden "darkness map": words are
+//  poured into it, and darker parts get extra layers of words.
+// =====================================================================
+function drawShape(n, wind = null) {
+  const c = sctx;
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.globalCompositeOperation = "source-over";
+  c.clearRect(0, 0, shapeMap.width, shapeMap.height);
+  if (n <= 0) return;
+  c.setTransform(SHAPE_SCALE, 0, 0, SHAPE_SCALE, 0, 0);
+  c.globalCompositeOperation = "lighter"; // overlapping strokes get denser
+  c.lineCap = "round"; c.lineJoin = "round";
+
+  const g = Math.min(n, GOAL) / GOAL;
+  const young = clamp(1 - g / 0.45, 0, 1);        // 1 = seedling, 0 = grown up
+  const cx = SW / 2;
+  // how tall the tree is on screen; oaks are shorter and wider
+  const heightAt = (gg) => ({ ponderosa: 0.5 + 0.48 * Math.sqrt(gg), blueoak: 0.45 + 0.37 * Math.sqrt(gg), sugarmaple: 0.52 + 0.46 * Math.sqrt(gg),
+    redwood: 0.52 + 0.46 * Math.sqrt(gg), sycamore: 0.48 + 0.4 * Math.sqrt(gg),
+    liveoak: 0.42 + 0.36 * Math.sqrt(gg), douglasfir: 0.5 + 0.47 * Math.sqrt(gg), bluegum: 0.52 + 0.46 * Math.sqrt(gg),
+    madrone: 0.48 + 0.42 * Math.sqrt(gg), baylaurel: 0.48 + 0.42 * Math.sqrt(gg) })[SPECIES];
+  const widthLimit = { ponderosa: 1.0, blueoak: 1.45, sugarmaple: 1.12, redwood: 0.6, sycamore: 1.35,
+    liveoak: 1.6, douglasfir: 0.75, bluegum: 0.95, madrone: 1.25, baylaurel: 1.15 }[SPECIES];
+  const sizeAt = (gg) => Math.max(40, Math.min(SH * heightAt(gg), SH - 16, (SW - 30) / widthLimit));
+  const S = sizeAt(g);
+  // On narrow screens (phones) the tree is limited by width and would sit low with empty space above.
+  // Raise the ground so the grown tree ends up centered. The ground is the same at every age,
+  // so the tree still grows upward from one spot.
+  const tallFull = Math.min(SH * heightAt(1), SH - 16);
+  const lift = CENTER_TREE ? Math.max(0, (tallFull - sizeAt(1)) / 2) : 0;
+  const ground = SH - 8 - lift;
+  const top = ground - S;
+
+  // ---- wind: the whole tree bends (more at the top), and branch tips bob ----
+  const A = S * 0.006;
+  const sway = (x, y) => {
+    if (!wind) return [x, y];
+    const h = clamp((ground - y) / S, 0, 1.2);
+    return [x + wind.bend * A * h * h + wind.swirl * A * Math.sin(Math.PI * h) * (1 - 2 * h), y];
+  };
+  const flutter = (seed, amount) => {
+    if (!wind) return [0, 0];
+    const phase = (seed % 1000) / 1000 * Math.PI * 2, f = 0.55 + (seed % 9) / 12;
+    const s = wind.flutterBase * Math.sin(2 * Math.PI * f * wind.time + phase)
+            + wind.flutterEv * Math.sin(2 * Math.PI * f * 2.7 * wind.time + phase * 1.7);
+    return [s * amount * 0.5, s * amount];
+  };
+  function blob(x, y, rx, ry, alpha) {
+    if (!(rx > 0.5) || !(ry > 0.5)) return;
+    c.save(); c.translate(x, y); c.scale(1, ry / rx);
+    const gr = c.createRadialGradient(0, 0, 0, 0, 0, rx);
+    gr.addColorStop(0, `rgba(255,255,255,${alpha})`);
+    gr.addColorStop(0.7, `rgba(255,255,255,${alpha * 0.75})`);
+    gr.addColorStop(1, "rgba(255,255,255,0)");
+    c.fillStyle = gr; c.fillRect(-rx, -rx, rx * 2, rx * 2);
+    c.restore();
+  }
+  // a tapered trunk from (x0,y0) up to (x1,y1), with a shadow on its right side
+  function trunkShape(x0, y0, x1, y1, w0, w1, bendX = 0) {
+    const side = (scale, shift) => {
+      const left = [], right = [];
+      for (let s = 0; s <= 10; s++) {
+        const f = s / 10;
+        const x = lerp(x0, x1, f) + bendX * Math.sin(Math.PI * f), y = lerp(y0, y1, f);
+        const w = lerp(w0, w1, f) * scale, sh = shift * lerp(w0, w1, f) * (1 - 0.7 * f);
+        left.push(sway(x - w / 2 + sh, y));
+        right.unshift(sway(x + w / 2 + sh, y));
+      }
+      c.beginPath();
+      left.concat(right).forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y)));
+      c.closePath(); c.fill();
+    };
+    c.fillStyle = "rgba(255,255,255,0.5)";
+    side(1, 0);
+    c.fillStyle = "rgba(255,255,255,0.33)";
+    side(0.45, 0.25);
+  }
+  // a bunch of leaves: several overlapping soft shapes, darker underneath
+  function leafCluster(x, y, R, seed, alpha = 0.4) {
+    const r = rng(seed);
+    const [fx, fy] = flutter(seed, R * 0.08);
+    x += fx; y += fy;
+    const parts = 5 + Math.floor(r() * 3);
+    for (let i = 0; i < parts; i++) {
+      const a = r() * Math.PI * 2, d = R * 0.55 * Math.sqrt(r());
+      const rr = R * (0.32 + r() * 0.25);
+      blob(x + Math.cos(a) * d, y + Math.sin(a) * d * 0.7, rr, rr * (0.75 + r() * 0.25), alpha);
+    }
+    blob(x + R * 0.12, y + R * 0.3, R * 0.55, R * 0.28, 0.28); // shade underneath
+  }
+
+  const kit = { c, g, young, ground, cx, S, top, sway, flutter, blob, trunkShape, leafCluster };
+  if (SPECIES === "blueoak") drawBlueOak(kit);
+  else if (SPECIES === "sugarmaple") drawSugarMaple(kit);
+  else if (SPECIES === "redwood") drawRedwood(kit);
+  else if (SPECIES === "sycamore") drawSycamore(kit);
+  else if (SPECIES === "liveoak") drawBlueOak(kit, { key: "live", trunk: 0.2, lean: 0.08, limbs: 4, spread: 2.7, fills: 60,
+    fillAlpha: 0.3, cluster: 0.1, crownLift: 0.33, crx: 0.7, cry: 0.33 });
+  else if (SPECIES === "douglasfir") drawRedwood(kit, { key: "fir", tiers: 32, crownBase: 0.12, reach: 0.27, droop: 0.3, cone: true,
+    spray: 0.32, sprayH: 0.1, flare: 0.3, trunk: 0.05 });
+  else if (SPECIES === "bluegum") drawEucalyptus(kit);
+  else if (SPECIES === "madrone") drawSycamore(kit, { key: "mad", mottled: false, wiggle: 0.15, leans: [0.34, 0.12], trunks: 2,
+    trunkLen: 0.34, limbLen: 0.26, clump: 0.12, mid: 1, upward: -0.2, fill: 48, fillY: 0.6, fillH: 0.3 });
+  else if (SPECIES === "baylaurel") drawSugarMaple(kit, { key: "bay", stems: 3, trunk: 0.17, rx: 0.46, ry: 0.42, cy: 0.52,
+    clusters: 125, shade: 0.37, limbLen: 0.2, spread: 1.4 });
+  else drawPonderosa(kit);
+}
+
+// ---------------------------------------------------------------------
+//  PONDEROSA PINE: tall straight trunk, layers of droopy needle clumps
+// ---------------------------------------------------------------------
+function drawPonderosa({ c, g, young, ground, cx, S, top, sway, flutter, blob }) {
+  // ---- trunk ----
+  const baseW = Math.max(20, S * lerp(0.055, 0.032, young));
+  const topW = Math.max(14, baseW * 0.3);
+  const trunk = (w0, w1, shift) => {
+    const left = [], right = [];
+    for (let s = 0; s <= 10; s++) {
+      const f = s / 10, y = lerp(ground, top + 6, f), w = lerp(w0, w1, f), sh = shift * (1 - 0.7 * f);
+      left.push(sway(cx - w / 2 + sh, y));
+      right.unshift(sway(cx + w / 2 + sh, y));
+    }
+    c.beginPath();
+    left.concat(right).forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y)));
+    c.closePath(); c.fill();
+  };
+  c.fillStyle = "rgba(255,255,255,0.5)";
+  trunk(baseW, topW, 0);
+  c.fillStyle = "rgba(255,255,255,0.33)";   // shadow on the right side
+  trunk(baseW * 0.45, topW * 0.5, baseW * 0.25);
+
+  // ---- needles: brushy sprays, long when young, short tufts when old ----
+  const needleLen = S * lerp(0.064, 0.3, young);
+  const needleW = lerp(11, 15, young);
+  function tuft(x, y, dir, size, count, seed, spread = 2.0) {
+    const r = rng(seed);
+    c.strokeStyle = "rgba(255,255,255,0.36)";
+    c.lineWidth = needleW;
+    for (let i = 0; i < count; i++) {
+      let a = dir + (r() - 0.5) * spread;
+      a = a + (-Math.PI / 2 - a) * 0.25;            // needles reach upward
+      const len = size * (0.55 + 0.45 * r());
+      const ex = x + Math.cos(a) * len, ey = y + Math.sin(a) * len;
+      c.beginPath(); c.moveTo(x, y);
+      c.quadraticCurveTo(x + Math.cos(a) * len * 0.6, y + Math.sin(a) * len * 0.6, ex, ey + len * 0.08);
+      c.stroke();
+    }
+    // a dense clump in the middle (grown trees only)
+    const core = 1 - young;
+    if (core > 0.02) {
+      const rx = size * 1.1 * core, ry = size * 0.46 * core;
+      blob(x, y - ry * 0.15, rx, ry, 0.5);
+      blob(x + rx * 0.08, y + ry * 0.35, rx * 0.75, ry * 0.6, 0.32); // shade underneath
+    }
+  }
+
+  // ---- branches in tiers (whorls) ----
+  const tiers = Math.max(1, Math.round(1 + 9 * Math.pow(g, 0.75)));
+  const crownBase = lerp(0.4, 0.58, young);
+  for (let i = 0; i < tiers; i++) {
+    const r = rng(hash("tier" + i));
+    const u = tiers === 1 ? 0.3 : i / (tiers - 1);
+    const y = ground - S * (crownBase + (0.9 - crownBase) * u + (r() - 0.5) * 0.02);
+    const adultProfile = u < 0.55 ? 0.85 + 0.2 * r() : 1 - ((u - 0.55) / 0.45) * 0.7;
+    const profile = lerp(adultProfile, 1 - 0.5 * u, young);
+    const L = S * lerp(0.175, 0.1, young) * profile;
+    for (const side of [-1, 1]) {
+      if (young < 0.5 && r() < 0.12) continue; // the odd missing branch, for irregularity
+      const len = L * (0.7 + 0.45 * r());
+      const droop = len * (0.08 + 0.14 * r()) * (1 - young);
+      const lift = len * 0.35 * young; // young branches reach upward
+      const bseed = hash(`b${i}${side}`);
+      const at = (t) => {
+        const [sx, sy] = sway(cx + side * len * t, y + droop * t * t * 1.3 - lift * t);
+        const [fx, fy] = flutter(bseed, 2.2 * t * t);
+        return [sx + fx, sy + fy];
+      };
+      c.strokeStyle = "rgba(255,255,255,0.5)";
+      c.lineWidth = Math.max(12, baseW * 0.2);
+      const [tx, ty] = at(1), [mx, my] = at(0.55), [bx, by] = at(0);
+      c.beginPath(); c.moveTo(bx, by);
+      c.quadraticCurveTo(mx, my, tx, ty);
+      c.stroke();
+      const clumps = young > 0.5 ? 1 : 2 + Math.round(r() * 2);
+      for (let k = 0; k < clumps; k++) {
+        const t = 1 - k * (0.22 + r() * 0.08);
+        const [px, py] = at(t);
+        const dir = side > 0 ? lerp(-0.45, -1.05, young) : -Math.PI - lerp(-0.45, -1.05, young);
+        const size = needleLen * (1 - k * 0.12) * (0.85 + 0.3 * r());
+        tuft(px, py - (k === 0 ? size * 0.15 : 0), dir, size, young > 0.5 ? 7 : 9, hash(`t${i}${side}${k}`), young > 0.5 ? 1.5 : 2.4);
+      }
+    }
+    if (young < 0.9) {
+      const [px, py] = sway(cx, y - 2);
+      blob(px, py, L * 0.4 * (1 - young), needleLen * 0.36 * (1 - young), 0.45);
+    }
+  }
+
+  // ---- the top of the tree (leader) ----
+  if (young > 0) {
+    const sprays = 4;
+    for (let k = 0; k < sprays; k++) {
+      const [px, py] = sway(cx, top + S * (0.03 + 0.38 * (k / sprays)));
+      const [fx, fy] = flutter(hash("leader" + k), 1.6);
+      tuft(px + fx, py + fy, -Math.PI / 2, needleLen * (1 - k * 0.07) * young + needleLen * 0.4, 6, hash("leader" + k), 1.7);
+    }
+  } else {
+    const [px, py] = sway(cx, top + 4);
+    const [fx, fy] = flutter(hash("leader"), 1.4);
+    tuft(px + fx, py + fy, -Math.PI / 2, needleLen * 1.3, 10, hash("leader"), 1.4);
+  }
+}
+
+// ---------------------------------------------------------------------
+//  BLUE OAK: short leaning trunk that splits into gnarled, spreading
+//  limbs, under a broad, rounded, lumpy crown
+// ---------------------------------------------------------------------
+function drawBlueOak(kit, options = {}) {
+  const { c, young, ground, cx, S, top, sway, flutter, trunkShape, leafCluster } = kit;
+  const O = Object.assign({ key: "oak", trunk: 0.3, lean: 0.05, limbs: 3, spread: 2.3, fills: 26, fillAlpha: 0.22,
+    cluster: 0.085, crownLift: 0.42, crx: 0.62, cry: 0.3 }, options);
+  const lean = S * O.lean * (1 - young);
+  const trunkH = S * lerp(O.trunk, 0.62, young);
+  const baseW = Math.max(20, S * lerp(0.11, 0.04, young));
+  const forkX = cx + lean, forkY = ground - trunkH;
+  trunkShape(cx, ground, forkX, forkY, baseW * (1 + 0.25 * (1 - young)), baseW * 0.62, lean * 0.6);
+
+  if (young > 0.6) {
+    // a seedling: a thin stem with a few small clusters of lobed leaves
+    const leaves = 5;
+    for (let i = 0; i < leaves; i++) {
+      const f = 0.45 + 0.55 * (i / (leaves - 1));
+      const side = i % 2 ? 1 : -1;
+      const [sx, sy] = sway(cx + lean * f, ground - trunkH * f);
+      const R = S * (0.1 + 0.05 * f);
+      const ox = i === leaves - 1 ? 0 : side * R * 0.8;
+      c.strokeStyle = "rgba(255,255,255,0.5)"; c.lineWidth = 11;
+      c.beginPath(); c.moveTo(sx, sy); c.lineTo(sx + ox * 0.7, sy - R * 0.4); c.stroke();
+      leafCluster(sx + ox, sy - R * 0.55, R, hash(O.key + "seed" + i), 0.42);
+    }
+    return;
+  }
+
+  // gnarled limbs: each one kinks, then forks a few times, ending in clumps of leaves
+  const maxDepth = 2 + Math.round(2 * (1 - young));
+  const clusterR = S * lerp(O.cluster, 0.11, young);
+  function limb(x, y, a, len, w, depth, id) {
+    const r = rng(hash(O.key + id));
+    const kink = (r() - 0.5) * 0.7;
+    const mx = x + Math.cos(a + kink) * len * 0.5, my = y + Math.sin(a + kink) * len * 0.5;
+    const a2 = a - kink * 0.6;
+    const ex = mx + Math.cos(a2) * len * 0.5, ey = my + Math.sin(a2) * len * 0.5;
+    const [fx, fy] = flutter(hash("oakf" + id), depth * 0.6);
+    const p0 = sway(x, y), p1 = sway(mx, my), p2 = sway(ex, ey);
+    p2[0] += fx; p2[1] += fy;
+    c.strokeStyle = "rgba(255,255,255,0.5)";
+    c.lineWidth = Math.max(11, w); c.beginPath(); c.moveTo(...p0); c.lineTo(...p1); c.stroke();
+    c.lineWidth = Math.max(11, w * 0.78); c.beginPath(); c.moveTo(...p1); c.lineTo(...p2); c.stroke();
+    if (depth >= maxDepth) {
+      leafCluster(p2[0], p2[1], clusterR * (0.85 + 0.3 * r()), hash("oakleaf" + id));
+      return;
+    }
+    if (depth >= maxDepth - 1) leafCluster(p1[0], p1[1] - clusterR * 0.2, clusterR * 0.75, hash("oakmid" + id), 0.32);
+    const kids = 2 + (r() < 0.45 ? 1 : 0);
+    for (let j = 0; j < kids; j++) {
+      let ca = a2 + (j - (kids - 1) / 2) * 0.75 + (r() - 0.5) * 0.4;
+      if (Math.sin(ca) > 0.15) ca = Math.atan2(0.15, Math.cos(ca)); // limbs don't hang far down
+      limb(ex, ey, ca, len * (0.6 + 0.15 * r()), w * 0.6, depth + 1, id + "-" + j);
+    }
+  }
+  const limbs = O.limbs + (young < 0.3 ? 1 : 0);
+  const spread = lerp(O.spread, 1.2, young);
+  for (let i = 0; i < limbs; i++) {
+    const r = rng(hash(O.key + "limb" + i));
+    const a = -Math.PI / 2 + (i / (limbs - 1) - 0.5) * spread + (r() - 0.5) * 0.3;
+    limb(forkX, forkY, a, S * lerp(0.3, 0.26, young) * (0.85 + 0.3 * r()), baseW * 0.55, 1, "L" + i);
+  }
+  // a lighter layer of leaves across the whole crown, so it reads as one broad, rounded canopy
+  const r = rng(hash(O.key + "canopy"));
+  const crownX = forkX, crownY = forkY - S * lerp(O.crownLift, 0.3, young);
+  const crx = S * lerp(O.crx, 0.4, young), cry = S * lerp(O.cry, 0.22, young);
+  const fills = Math.round(lerp(O.fills, 12, young));
+  for (let i = 0; i < fills; i++) {
+    let px, py, tries = 0;
+    do { px = r() * 2 - 1; py = r() * 2 - 1; tries++; } while (px * px + py * py > 1 && tries < 20);
+    const [sx, sy] = sway(crownX + px * crx, crownY + py * cry);
+    leafCluster(sx, sy, clusterR * (0.9 + 0.4 * r()), hash(O.key + "fill" + i), O.fillAlpha + 0.06 * py);
+  }
+}
+
+// ---------------------------------------------------------------------
+//  SUGAR MAPLE: tall straight trunk, upward-reaching limbs, and a
+//  dense, full oval crown
+// ---------------------------------------------------------------------
+function drawSugarMaple(kit, options = {}) {
+  const { c, young, ground, cx, S, top, sway, flutter, trunkShape, leafCluster } = kit;
+  const O = Object.assign({ key: "maple", stems: 1, trunk: 0.25, rx: 0.47, ry: 0.41, cy: 0.6, clusters: 110, shade: 0.33, limbLen: 0.28, spread: 2.0 }, options);
+  const baseW = Math.max(20, S * lerp(0.07, 0.035, young));
+
+  if (young > 0.6) {
+    // a seedling: a slender stem with pairs of leaves opposite each other
+    trunkShape(cx, ground, cx, top + S * 0.05, baseW, baseW * 0.7);
+    const pairs = 3;
+    for (let i = 0; i < pairs; i++) {
+      const f = 0.5 + 0.5 * (i / (pairs - 1));
+      const [sx, sy] = sway(cx, ground - S * 0.95 * f);
+      const R = S * (0.09 + 0.05 * f);
+      for (const side of [-1, 1]) {
+        c.strokeStyle = "rgba(255,255,255,0.5)"; c.lineWidth = 11;
+        c.beginPath(); c.moveTo(sx, sy); c.lineTo(sx + side * R * 0.7, sy - R * 0.35); c.stroke();
+        leafCluster(sx + side * R * 1.05, sy - R * 0.45, R, hash(`${O.key}${i}${side}`), 0.42);
+      }
+    }
+    return;
+  }
+
+  // A grown sugar maple: a short trunk under a low, very broad, dense, rounded crown
+  // (almost as wide as the tree is tall), with a lumpy outline. Young ones are narrower and taller-trunked.
+  const trunkH = S * lerp(O.trunk, 0.45, young);
+  const forkY = ground - trunkH;
+  const stems = young < 0.3 ? O.stems : 1;
+  const stemTops = [];
+  for (let s = 0; s < stems; s++) {
+    // several stems rising from the base and leaning apart (bay laurels grow like this)
+    const off = stems === 1 ? 0 : (s / (stems - 1) - 0.5);
+    const tx = cx + off * S * 0.16;
+    trunkShape(cx + off * baseW * 0.5, ground, tx, forkY - S * 0.06, baseW * (stems === 1 ? 1.05 : 0.7), baseW * (stems === 1 ? 0.62 : 0.42), off * S * 0.02);
+    stemTops.push(tx);
+  }
+  const crownCX = cx + S * 0.015 * (1 - young), crownCY = ground - S * lerp(O.cy, 0.62, young);
+  const rx = S * lerp(O.rx, 0.26, young), ry = S * lerp(O.ry, 0.35, young);
+  // the crown's outline is a bumpy oval, not a perfect one
+  const edge = (a) => 1 + 0.1 * Math.sin(3 * a + 1.1) + 0.07 * Math.sin(5 * a + 2.3) + 0.05 * Math.sin(8 * a + 0.4);
+
+  // limbs reaching up and out into the crown
+  function limb(x, y, a, len, w, depth, id) {
+    const r = rng(hash(O.key + id));
+    const ex = x + Math.cos(a) * len, ey = y + Math.sin(a) * len;
+    const p0 = sway(x, y), p1 = sway(ex, ey);
+    c.strokeStyle = "rgba(255,255,255,0.5)";
+    c.lineWidth = Math.max(11, w); c.beginPath(); c.moveTo(...p0); c.lineTo(...p1); c.stroke();
+    if (depth >= 3) return;
+    for (let j = 0; j < 2; j++) {
+      const ca = a + (j ? 1 : -1) * (0.3 + r() * 0.25);
+      limb(ex, ey, ca, len * 0.68, w * 0.6, depth + 1, id + "-" + j);
+    }
+  }
+  const limbs = young < 0.3 ? 5 : 4;
+  const spread = lerp(O.spread, 1.3, young);
+  for (let i = 0; i < limbs; i++) {
+    const a = -Math.PI / 2 + (i / (limbs - 1) - 0.5) * spread;
+    limb(stemTops[i % stemTops.length], forkY, a, S * lerp(O.limbLen, 0.2, young), baseW * 0.5, 1, "L" + i);
+  }
+  // fill the crown with leaf clusters; lower and right-hand ones are in shade
+  const r = rng(hash(O.key + "crown"));
+  const clusters = Math.round(lerp(O.clusters, 18, young));
+  for (let i = 0; i < clusters; i++) {
+    const a = r() * Math.PI * 2, d = Math.sqrt(r()) * edge(a);
+    const px = Math.cos(a) * d, py = Math.sin(a) * d;
+    // the lower edge hangs a little lower out at the sides
+    const x = crownCX + px * rx * 0.9, y = crownCY + py * ry * 0.9 + Math.abs(px) * ry * 0.12 * (1 - young);
+    const [sx, sy] = sway(x, y);
+    const shade = O.shade + 0.1 * clamp(py, -1, 1) + 0.05 * clamp(px, -1, 1);
+    leafCluster(sx, sy, S * lerp(0.075, 0.095, young) * (0.8 + 0.4 * r()), hash(O.key + "leaf" + i), shade);
+  }
+}
+
+// ---------------------------------------------------------------------
+//  COAST REDWOOD: very tall and narrow, a straight trunk with a flared
+//  base, short drooping branches with flat sprays, tapering to a spire
+// ---------------------------------------------------------------------
+function drawRedwood(kit, options = {}) {
+  const { c, young, ground, cx, S, top, sway, flutter, blob, trunkShape } = kit;
+  const O = Object.assign({ key: "redwood", tiers: 28, crownBase: 0.3, reach: 0.15, droop: 0.45, cone: false,
+    spray: 0.24, sprayH: 0.07, flare: 0.7, trunk: 0.07 }, options);
+  const baseW = Math.max(20, S * lerp(O.trunk, 0.035, young));
+  trunkShape(cx, ground, cx, top + S * 0.03, baseW, Math.max(12, baseW * 0.16));
+  if (young < 0.8) trunkShape(cx, ground, cx, ground - S * 0.05, baseW * (1 + O.flare * (1 - young)), baseW); // flared base
+
+  const tiers = Math.round(lerp(O.tiers, 9, young));
+  const crownBase = lerp(O.crownBase, 0.14, young);   // old redwoods lose their lower branches
+  for (let i = 0; i < tiers; i++) {
+    const r = rng(hash(O.key + i));
+    const u = tiers === 1 ? 0.5 : i / (tiers - 1);
+    const y0 = ground - S * (crownBase + (0.95 - crownBase) * u + (r() - 0.5) * 0.01);
+    // grown redwoods are almost a column that narrows near the top; young ones are a cone
+    const grownShape = O.cone ? 0.1 + 0.9 * Math.pow(1 - u, 1.05) : 0.45 + 0.55 * Math.pow(1 - u, 1.4);
+    const profile = lerp(grownShape, 1 - 0.85 * u, young);
+    const L = S * lerp(O.reach, 0.2, young) * profile;
+    for (const side of [-1, 1]) {
+      if (r() < 0.12 * (1 - young)) continue;
+      const len = L * (0.75 + 0.4 * r());
+      const droop = len * lerp(O.droop, 0.12, young);
+      const seed = hash(`${O.key}${i}${side}`);
+      const at = (t) => {
+        const [sx, sy] = sway(cx + side * len * t, y0 + droop * t * (1.4 - t));
+        const [fx, fy] = flutter(seed, 1.8 * t * t);
+        return [sx + fx, sy + fy];
+      };
+      c.strokeStyle = "rgba(255,255,255,0.5)";
+      c.lineWidth = Math.max(10, baseW * 0.12);
+      const [bx, by] = at(0), [mx, my] = at(0.5), [tx, ty] = at(1);
+      c.beginPath(); c.moveTo(bx, by); c.quadraticCurveTo(mx, my, tx, ty); c.stroke();
+      // flat sprays of foliage along the branch, with a few hanging below
+      for (let k = 0; k < 4; k++) {
+        const t = 0.35 + k * 0.22;
+        if (t > 1.02) break;
+        const [px, py] = at(Math.min(1, t));
+        blob(px, py - 2, len * lerp(O.spray, 0.42, young), Math.max(7, len * lerp(O.sprayH, 0.16, young)), 0.4);
+        if (r() < 0.6) {
+          c.strokeStyle = "rgba(255,255,255,0.3)"; c.lineWidth = 10;
+          c.beginPath(); c.moveTo(px, py); c.lineTo(px + side * len * 0.06, py + len * 0.16); c.stroke();
+        }
+      }
+    }
+  }
+  // the spire at the very top
+  const [px, py] = sway(cx, top + S * 0.04);
+  blob(px, py, Math.max(10, S * lerp(0.02, 0.05, young)), S * lerp(0.06, 0.1, young), 0.42);
+}
+
+// ---------------------------------------------------------------------
+//  CALIFORNIA SYCAMORE: two or three crooked, leaning trunks with mottled,
+//  patchy bark, under an open, irregular crown of big leaf clumps
+// ---------------------------------------------------------------------
+function drawSycamore(kit, options = {}) {
+  const { c, young, ground, cx, S, top, sway, flutter, blob, leafCluster } = kit;
+  const O = Object.assign({ key: "syc", mottled: true, wiggle: 0.06, leans: [-0.38, 0.3, 0.06], trunks: 2, trunkLen: 0.3,
+    limbLen: 0.3, clump: 0.1, mid: 0.6, upward: 0.1, fill: 0, fillY: 0.68, fillH: 0.25 }, options);
+  const baseW = Math.max(20, S * lerp(0.065, 0.035, young));
+
+  // a crooked, tapering trunk or limb from (x,y) heading in direction a, with blotchy bark
+  function crooked(x, y, a, len, w0, w1, id) {
+    const r = rng(hash(O.key + id));
+    const dx = Math.cos(a), dy = Math.sin(a), wig = (r() - 0.5) * 2, ph = r() * 6;
+    const pts = [];
+    for (let s = 0; s <= 12; s++) {
+      const f = s / 12;
+      const off = Math.sin(f * Math.PI * 1.6 + ph) * len * O.wiggle * wig;
+      pts.push({ x: x + dx * len * f - dy * off, y: y + dy * len * f + dx * off, w: lerp(w0, w1, f) });
+    }
+    const left = [], right = [];
+    for (const p of pts) {
+      left.push(sway(p.x - dy * p.w / 2, p.y + dx * p.w / 2));
+      right.unshift(sway(p.x + dy * p.w / 2, p.y - dx * p.w / 2));
+    }
+    c.fillStyle = "rgba(255,255,255,0.5)";
+    c.beginPath();
+    left.concat(right).forEach(([px, py], i) => (i ? c.lineTo(px, py) : c.moveTo(px, py)));
+    c.closePath(); c.fill();
+    // mottled bark: darker patches here and there
+    if (O.mottled && w0 > 18) {
+      for (let k = 0; k < 5; k++) {
+        const p = pts[1 + Math.floor(r() * 10)];
+        const [bx, by] = sway(p.x + (r() - 0.5) * p.w * 0.4, p.y);
+        blob(bx, by, p.w * 0.35, p.w * 0.55, 0.3);
+      }
+    }
+    const end = pts[pts.length - 1];
+    return { x: end.x, y: end.y, a: a + wig * 0.15 };
+  }
+
+  if (young > 0.6) {
+    // a seedling: a slightly crooked stem with a few big, broad leaves
+    const tip = crooked(cx, ground, -Math.PI / 2 + 0.08, S * 0.7, baseW, baseW * 0.7, "seed");
+    const leaves = [[-1, 0.55], [1, 0.75], [0, 1]];
+    for (const [side, f] of leaves) {
+      const [sx, sy] = sway(lerp(cx, tip.x, f), lerp(ground, tip.y, f));
+      const R = S * (0.12 + 0.06 * f);
+      c.strokeStyle = "rgba(255,255,255,0.5)"; c.lineWidth = 11;
+      c.beginPath(); c.moveTo(sx, sy); c.lineTo(sx + side * R * 0.8, sy - R * 0.5); c.stroke();
+      leafCluster(sx + side * R * 1.1, sy - R * 0.75, R, hash(O.key + "leaf" + f), 0.42);
+    }
+    return;
+  }
+
+  // limbs that fork a few times and end in big clumps of leaves (leaving gaps: the crown is open)
+  const maxDepth = 2 + Math.round(1.5 * (1 - young));
+  const clumpR = S * lerp(O.clump, 0.12, young);
+  function limb(x, y, a, len, w, depth, id) {
+    const end = crooked(x, y, a, len, w, w * 0.65, id);
+    const r = rng(hash(O.key + "l" + id));
+    if (depth >= maxDepth) { leafCluster(...sway(end.x, end.y), clumpR * (0.8 + 0.4 * r()), hash(O.key + "c" + id), 0.4); return; }
+    if (depth >= (O.mid >= 1 ? 1 : 2) && r() < O.mid) leafCluster(...sway(end.x, end.y), clumpR * 0.75, hash(O.key + "m" + id), 0.32);
+    const kids = 2 + (r() < 0.35 ? 1 : 0);
+    for (let j = 0; j < kids; j++) {
+      let ca = end.a + (j - (kids - 1) / 2) * 0.8 + (r() - 0.5) * 0.5;
+      if (Math.sin(ca) > O.upward) ca = Math.atan2(O.upward, Math.cos(ca));
+      limb(end.x, end.y, ca, len * (0.62 + 0.2 * r()), Math.max(11, w * 0.6), depth + 1, id + "-" + j);
+    }
+  }
+  // two or three trunks leaning (away from each other, or together toward the light)
+  const trunks = young < 0.3 ? O.leans.length : O.trunks;
+  const leans = O.leans;
+  for (let t = 0; t < trunks; t++) {
+    const main = t === 0;
+    const a = -Math.PI / 2 + leans[t];
+    const end = crooked(cx + (t - 1) * baseW * 0.25, ground, a, S * lerp(O.trunkLen, 0.45, young) * (main ? 1 : 0.85), baseW * (main ? 1 : 0.75), baseW * 0.5, "T" + t);
+    limb(end.x, end.y, end.a, S * lerp(O.limbLen, 0.22, young), baseW * 0.45, 1, "L" + t);
+  }
+  // an optional layer of leaves across the crown, for trees with a fuller, rounded canopy
+  if (O.fill) {
+    const r = rng(hash(O.key + "canopy"));
+    const lean = O.leans.reduce((s, v) => s + v, 0) / O.leans.length;
+    const ccx = cx + lean * S * 0.35, ccy = ground - S * lerp(O.fillY, 0.6, young);
+    const crx = S * lerp(0.4, 0.25, young), cry = S * lerp(O.fillH, 0.2, young);
+    const count = Math.round(lerp(O.fill, 10, young));
+    for (let i = 0; i < count; i++) {
+      const a = r() * Math.PI * 2, d = Math.sqrt(r()) * (1 + 0.12 * Math.sin(3 * a + 1));
+      const [sx, sy] = sway(ccx + Math.cos(a) * d * crx, ccy + Math.sin(a) * d * cry);
+      leafCluster(sx, sy, clumpR * (0.8 + 0.4 * r()), hash(O.key + "fill" + i), 0.28 + 0.06 * Math.sin(a));
+    }
+  }
+}
+
+// ---------------------------------------------------------------------
+//  BLUE GUM EUCALYPTUS: very tall, a long straight trunk with bark peeling
+//  in strips, a few big upward limbs, and an open crown of hanging leaves
+// ---------------------------------------------------------------------
+function drawEucalyptus({ c, young, ground, cx, S, top, sway, flutter, blob, trunkShape, leafCluster }) {
+  const baseW = Math.max(20, S * lerp(0.06, 0.03, young));
+  if (young > 0.6) {
+    // a seedling: a stem with pairs of round young leaves hugging it
+    trunkShape(cx, ground, cx, top + S * 0.05, baseW, baseW * 0.7);
+    for (let i = 0; i < 4; i++) {
+      const f = 0.35 + 0.65 * (i / 3);
+      const [sx, sy] = sway(cx, ground - S * 0.95 * f);
+      const R = S * (0.065 + 0.035 * f);
+      for (const side of [-1, 1]) leafCluster(sx + side * R * 0.95, sy - R * 0.2, R, hash(`euseed${i}${side}`), 0.42);
+    }
+    return;
+  }
+  const trunkH = S * lerp(0.55, 0.5, young);
+  const forkY = ground - trunkH, lean = S * 0.02;
+  trunkShape(cx, ground, cx + lean, forkY, baseW, baseW * 0.55, lean * 0.5);
+  // bark hanging off in long strips: darker streaks running up the trunk
+  const rb = rng(hash("eubark"));
+  c.strokeStyle = "rgba(255,255,255,0.28)";
+  c.lineWidth = Math.max(5, baseW * 0.12);
+  for (let k = 0; k < 6; k++) {
+    const f0 = 0.05 + rb() * 0.6, x = cx + lean * f0 + (rb() - 0.5) * baseW * 0.6;
+    const y0 = ground - trunkH * f0, len = trunkH * (0.1 + rb() * 0.2);
+    c.beginPath(); c.moveTo(...sway(x, y0)); c.lineTo(...sway(x + (rb() - 0.5) * 4, y0 - len)); c.stroke();
+  }
+  // limbs reaching upward, ending in loose clumps of long hanging leaves
+  const R = S * lerp(0.07, 0.09, young);
+  function limb(x, y, a, len, w, depth, id) {
+    const r = rng(hash("eu" + id));
+    const ex = x + Math.cos(a) * len, ey = y + Math.sin(a) * len;
+    const [fx, fy] = flutter(hash("euf" + id), depth * 0.7);
+    const p0 = sway(x, y), p1 = sway(ex, ey);
+    p1[0] += fx; p1[1] += fy;
+    c.strokeStyle = "rgba(255,255,255,0.5)";
+    c.lineWidth = Math.max(10, w); c.beginPath(); c.moveTo(...p0); c.lineTo(...p1); c.stroke();
+    if (depth >= 3) {
+      leafCluster(p1[0], p1[1] + R * 0.3, R * (0.8 + 0.4 * r()), hash("eul" + id), 0.38);
+      blob(p1[0] + R * 0.1, p1[1] + R * 1.0, R * 0.42, R * 0.75, 0.3); // leaves hanging down
+      return;
+    }
+    if (r() < 0.4) leafCluster(p1[0], p1[1] + R * 0.4, R * 0.7, hash("eum" + id), 0.3);
+    for (let j = 0; j < 2; j++) {
+      let ca = a + (j ? 1 : -1) * (0.35 + r() * 0.35);
+      if (Math.sin(ca) > -0.15) ca = Math.atan2(-0.15, Math.cos(ca)); // keep reaching up or out
+      limb(ex, ey, ca, len * (0.62 + 0.15 * r()), w * 0.6, depth + 1, id + "-" + j);
+    }
+  }
+  const limbs = 3;
+  for (let i = 0; i < limbs; i++) {
+    const r = rng(hash("eulimb" + i));
+    const a = -Math.PI / 2 + (i / (limbs - 1) - 0.5) * 1.0 + (r() - 0.5) * 0.25;
+    limb(cx + lean, forkY, a, S * lerp(0.22, 0.18, young) * (0.85 + 0.3 * r()), baseW * 0.5, 1, "L" + i);
+  }
+  // loose, patchy masses of hanging leaves through the crown (with gaps you can see through)
+  const r = rng(hash("eucrown"));
+  const ccx = cx + lean, ccy = forkY - S * lerp(0.25, 0.2, young);
+  const crx = S * lerp(0.3, 0.2, young), cry = S * lerp(0.2, 0.16, young);
+  const masses = Math.round(lerp(34, 12, young));
+  for (let i = 0; i < masses; i++) {
+    const a = r() * Math.PI * 2, d = Math.sqrt(r());
+    const x = ccx + Math.cos(a) * d * crx, y = ccy + Math.sin(a) * d * cry;
+    if (r() < 0.25) continue; // leave some holes
+    const [sx, sy] = sway(x, y);
+    leafCluster(sx, sy, R * (0.8 + 0.5 * r()), hash("eumass" + i), 0.32 + 0.06 * Math.sin(a));
+    blob(sx, sy + R * 0.8, R * 0.35, R * 0.6, 0.24); // hanging tips
+  }
+}
+
+// =====================================================================
+//  WIND
+//  A gentle sway that repeats every 30 seconds, plus random events
+//  (a gust, a calm, a flutter, a swirl) that are different each loop.
+// =====================================================================
+const WIND_LOOP = 30;
+function windAt(sec) {
+  const loop = Math.floor(sec / WIND_LOOP), t = sec - loop * WIND_LOOP;
+  const wave = (period, phase) => Math.sin(2 * Math.PI * t / period + phase);
+  let bend = 0.55 * wave(7.5, 0) + 0.3 * wave(30 / 7, 1.3) + 0.15 * wave(30 / 13, 2.1) + 0.25 * wave(30, 0.4);
+  let swirl = 0.3 * wave(10, 0.7) * wave(30 / 17, 0);
+  let flutterBase = 0.8 + 0.2 * wave(5, 0), flutterEv = 0;
+
+  const r = rng(loop * 977 + 3);
+  const events = r() < 0.3 ? 0 : r() < 0.7 ? 1 : 2;
+  for (let i = 0; i < events; i++) {
+    const type = pick(r, ["gust", "gust", "calm", "flutter", "swirl"]);
+    const start = 1 + r() * 21, dur = 4 + r() * 4, dir = r() < 0.5 ? -1 : 1;
+    const tau = t - start;
+    if (tau < 0 || tau > dur) continue;
+    const env = Math.pow(Math.sin(Math.PI * tau / dur), 2); // eases in and out
+    if (type === "gust") { bend += dir * env * (3 + 0.9 * Math.sin(2 * Math.PI * tau / 1.6)); flutterEv += 1.3 * env; }
+    if (type === "calm") { bend *= 1 - 0.85 * env; swirl *= 1 - 0.85 * env; flutterBase *= 1 - 0.75 * env; }
+    if (type === "flutter") flutterEv += 2.4 * env;
+    if (type === "swirl") swirl += 1.8 * env * Math.sin(2 * Math.PI * tau / 2.4);
+  }
+  return { time: sec, bend, swirl, flutterBase, flutterEv };
+}
+
+// =====================================================================
+//  POURING WORDS INTO THE SHAPE
+// =====================================================================
+function readShape() {
+  const d = sctx.getImageData(0, 0, shapeMap.width, shapeMap.height).data;
+  const w = shapeMap.width, h = shapeMap.height;
+  return (x, y) => {
+    const ix = Math.floor(x * SHAPE_SCALE), iy = Math.floor(y * SHAPE_SCALE);
+    if (ix < 0 || iy < 0 || ix >= w || iy >= h) return 0;
+    return d[(iy * w + ix) * 4 + 3] / 255;
+  };
+}
+
+// Finds the stretches of each row that are inside the tree
+function findRuns(density, layer) {
+  const runs = [];
+  const L = LAYERS[layer];
+  for (let y = SH - 8 - LINE / 2 - L.dy; y > 0; y -= LINE) {
+    let start = -1, gap = 0;
+    for (let x = 0; x <= SW; x += 2) {
+      const inside = x < SW && density(x, y) > L.threshold;
+      if (inside) { if (start < 0) start = x; gap = 0; }
+      else if (start >= 0) {
+        gap += 2;
+        if (gap > 3 || x >= SW) {
+          const end = x - gap;
+          if (end - start >= MIN_RUN) runs.push({ x0: start + L.dx, x1: end + L.dx, y });
+          start = -1; gap = 0;
+        }
+      }
+    }
+  }
+  return runs;
+}
+
+// The words: every poem gets an equal share of the tree, but its words are
+// scattered randomly all over it. Each new poem reshuffles everything.
+function wordStream(list, capacity, layer) {
+  const n = list.length;
+  const share = capacity / n;
+  const tokens = [];
+  list.forEach((poem, p) => {
+    const kw = poem.keywords.length ? poem.keywords : ["poem"];
+    let used = 0, wi = (p * 3 + layer * 5) % kw.length;
+    while (used < share) {
+      const word = kw[wi++ % kw.length];
+      tokens.push(word);
+      used += textWidth(word) + SPACE;
+    }
+  });
+  const r = rng(hash(`shuffle|${n}|${layer}`));
+  for (let i = tokens.length - 1; i > 0; i--) {
+    const j = Math.floor(r() * (i + 1));
+    [tokens[i], tokens[j]] = [tokens[j], tokens[i]];
+  }
+  let i = 0;
+  const counts = new Map();
+  return () => {
+    const word = tokens.length ? tokens[i++ % tokens.length] : "poem";
+    const occ = counts.get(word) || 0;
+    counts.set(word, occ + 1);
+    return { word, key: `${layer}|${word}#${occ}` };
+  };
+}
+
+// A piece of text, plus where each of its letters sits (so the wind can reveal or hide single letters)
+function makePiece(text, x, y, layer, key) {
+  const pre = [0];
+  for (let i = 1; i <= text.length; i++) pre.push(textWidth(text.slice(0, i)));
+  const mid = [];
+  for (let i = 0; i < text.length; i++) mid.push(x + (pre[i] + pre[i + 1]) / 2);
+  return { text, x, y, layer, key, pre, mid };
+}
+
+function layoutTree(n, list) {
+  if (n <= 0 || SW < 10 || SH < 10) { if (SW >= 10) drawShape(0); return []; }
+  // Words are laid out over everywhere the swaying tree can reach,
+  // so that when the wind moves it, letters appear at its edges.
+  const poses = [null, { time: 0, bend: -4, swirl: 0, flutterBase: 1, flutterEv: 1 }, { time: 0, bend: 4, swirl: 0, flutterBase: -1, flutterEv: -1 }];
+  const maps = poses.map((w) => { drawShape(n, w); return readShape(); });
+  const density = (x, y) => Math.max(maps[0](x, y), maps[1](x, y), maps[2](x, y));
+  const pieces = [];
+  LAYERS.forEach((L, layer) => {
+    const runs = findRuns(density, layer);
+    const capacity = runs.reduce((s, r) => s + (r.x1 - r.x0), 0);
+    const next = wordStream(list, capacity, layer);
+    let rest = "", tok = null, part = 0;
+    for (const run of runs) {
+      let x = run.x0;
+      const runWidth = run.x1 - run.x0;
+      for (let guard = 0; guard < 200; guard++) {
+        if (!rest) { tok = next(); rest = tok.word; part = 0; }
+        const room = run.x1 - x;
+        if (room < MIN_RUN) break;
+        const w = textWidth(rest);
+        if (w <= room) {
+          pieces.push(makePiece(rest, x, run.y, layer, `${tok.key}.${part}`));
+          x += w + SPACE; rest = "";
+          continue;
+        }
+        if (w > runWidth) {
+          // too narrow for the whole word: break it, and carry on below (like "Buil / ding")
+          let k = rest.length - 1;
+          while (k > 0 && textWidth(rest.slice(0, k)) > room) k--;
+          if (k >= 1) {
+            pieces.push(makePiece(rest.slice(0, k), x, run.y, layer, `${tok.key}.${part}`));
+            rest = rest.slice(k); part++;
+          }
+        }
+        break; // the word moves on to the next stretch
+      }
+    }
+  });
+  return removeOrphans(pieces);
+}
+
+// Links each piece to the pieces touching it (on its row or the rows just above/below),
+// and drops pieces with none, so no stray letters float in the air.
+function removeOrphans(pieces) {
+  const link = (list) => {
+    const grid = new Map(), G = 40;
+    for (const p of list) {
+      p.w = p.pre[p.pre.length - 1];
+      for (let a = Math.floor(p.x / G); a <= Math.floor((p.x + p.w) / G); a++) {
+        const k = a + "," + Math.floor(p.y / G);
+        if (!grid.has(k)) grid.set(k, []);
+        grid.get(k).push(p);
+      }
+    }
+    for (const p of list) {
+      const nb = new Set();
+      for (let a = Math.floor((p.x - 6) / G); a <= Math.floor((p.x + p.w + 6) / G); a++) {
+        for (let b = Math.floor(p.y / G) - 1; b <= Math.floor(p.y / G) + 1; b++) {
+          for (const q of grid.get(a + "," + b) || []) {
+            if (q !== p && Math.abs(q.y - p.y) <= LINE * 1.2 && q.x <= p.x + p.w + 6 && q.x + q.w >= p.x - 6) nb.add(q);
+          }
+        }
+      }
+      p.nb = [...nb];
+    }
+  };
+  link(pieces);
+  const kept = pieces.filter((p) => p.nb.length > 0);
+  link(kept);
+  return kept;
+}
+
+// =====================================================================
+//  DRAWING AND ANIMATING
+// =====================================================================
+// What's on screen. Words never move: the wind only changes which letters are uncovered,
+// and new poems are typed in (and old spots backspaced out) letter by letter.
+let view = { n: 0, pieces: [], entries: [], end: 0 };
+
+function lettersShown(e, now) {
+  if (e.mode === "static") return e.p.text.length;
+  const done = clamp(Math.floor((now - e.start) / e.speed), 0, e.p.text.length);
+  return e.mode === "type" ? done : e.p.text.length - done;
+}
+
+// Draws the words whose letters are inside the (possibly swaying) tree
+function drawPieces(g2, entries, density, now) {
+  g2.font = TREE_FONT;
+  g2.textBaseline = "middle";
+  g2.fillStyle = INK;
+  for (const e of entries) {
+    const p = e.p, count = lettersShown(e, now);
+    p.runs = []; p.shown = 0;
+    if (!count) continue;
+    const th = LAYERS[p.layer].threshold;
+    let from = -1;
+    for (let i = 0; i <= count; i++) {
+      const visible = i < count && density(p.mid[i], p.y) > th;
+      if (visible && from < 0) from = i;
+      if (!visible && from >= 0) { p.runs.push([from, i]); p.shown += i - from; from = -1; }
+    }
+  }
+  // skip any lone letter or two with nothing showing next to it
+  for (const e of entries) {
+    const p = e.p, count = lettersShown(e, now);
+    if (!p.shown) continue;
+    if (p.shown <= 2 && !(p.nb || []).some((q) => q.shown > 0)) continue;
+    g2.globalAlpha = LAYERS[p.layer].alpha;
+    for (const [from, to] of p.runs) {
+      g2.fillText(from === 0 && to === p.text.length ? p.text : p.text.slice(from, to), p.x + p.pre[from], p.y);
+    }
+    if (e.mode === "type" && count > 0 && count < p.text.length && e.caret && Math.floor(now / 260) % 2 === 0) {
+      g2.fillText("|", p.x + p.pre[count] + 0.5, p.y);
+    }
+  }
+  g2.globalAlpha = 1;
+}
+
+function paint(density, now) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1;
+  ctx.drawImage(paper, 0, 0);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  drawPieces(ctx, view.entries, density, now);
+  if (!view.entries.length && view.n === 0) {
+    ctx.font = `italic 15px Georgia, serif`;
+    ctx.fillStyle = "#8a857a";
+    ctx.textAlign = "center";
+    ctx.fillText("a seed, waiting for its first poem", SW / 2, SH - 30);
+    ctx.textAlign = "left";
+  }
+}
+
+function showInstantly(n, pieces) {
+  view = { n, pieces, entries: pieces.map((p) => ({ p, mode: "static" })), end: 0 };
+}
+
+// The tree rewrites itself: in many spots at once, old words are backspaced
+// and new ones are typed, until everything fits the bigger tree.
+function typeInto(n, next) {
+  const now = performance.now();
+  const before = new Map(view.pieces.map((p) => [p.key, p]));
+  const CELL_W = 140, CELL_H = 110;
+  const cellOf = (p) => `${Math.floor(p.x / CELL_W)},${Math.floor(p.y / CELL_H)}`;
+  const cellStart = (cell) => (hash(cell + "|" + n) % 1000) / 1000 * 2400;
+  const rowInCell = (p) => Math.floor((p.y % CELL_H) / LINE);
+  const entries = [];
+  let end = now;
+  for (const p of next) {
+    const o = before.get(p.key);
+    if (o && o.text === p.text && Math.abs(o.x - p.x) < 0.5 && Math.abs(o.y - p.y) < 0.5) {
+      entries.push({ p, mode: "static" });
+      before.delete(p.key);
+      continue;
+    }
+    const h = hash(p.key);
+    const start = now + cellStart(cellOf(p)) + 420 + rowInCell(p) * 45 + (h % 160);
+    const speed = 30 + (h % 28);
+    entries.push({ p, mode: "type", start, speed, caret: h % 3 === 0 });
+    end = Math.max(end, start + speed * p.text.length);
+  }
+  for (const o of before.values()) {
+    const h = hash(o.key + "x");
+    const start = now + cellStart(cellOf(o)) + rowInCell(o) * 22 + (h % 90);
+    entries.push({ p: o, mode: "erase", start, speed: 13 });
+    end = Math.max(end, start + 13 * o.text.length);
+  }
+  view = { n, pieces: next, entries, end };
+  return wait(end - now + 100).then(() => {
+    if (view.pieces === next) view.entries = next.map((p) => ({ p, mode: "static" }));
+  });
+}
+
+// The animation loop: about 30 frames a second, always swaying
+let lastFrame = 0, lastRetry = 0;
+function loop(now) {
+  requestAnimationFrame(loop);
+  if (now - lastFrame < 32) return;
+  // the forest or a finished tree is open: sway those instead
+  if ($("garden").classList.contains("hidden")) {
+    const open = !$("forest").classList.contains("hidden") || !$("treeDetail").classList.contains("hidden");
+    if (open && picturePairs.length) {
+      // safety net: if a picture was set up before it had a size (or its size changed), set it up again
+      const stale = pictures.length < picturePairs.length ||
+        pictures.some((pic) => pic.cv.clientWidth !== pic.w || pic.cv.clientHeight !== pic.h);
+      if (stale) showPictures(picturePairs);
+      lastFrame = now; pictures.forEach((pic) => paintPicture(pic, now));
+    }
+    return;
+  }
+  if (SW < 10 || SH < 10) return;
+  lastFrame = now;
+  // safety net: if the page was hidden while loading, the tree can come up empty, so lay it out again
+  if (!view.pieces.length && view.n > 0 && now > view.end && now - lastRetry > 1000) { lastRetry = now; redraw(); }
+  drawShape(view.n, windAt(now / 1000));
+  paint(readShape(), now);
+}
+
+// Finished trees in the forest and on their own page, swaying in the wind too.
+// Each one is laid out once, then redrawn every frame with its own wind timing.
+let pictures = [];
+function makePicture(cv, tree) {
+  const w = cv.clientWidth, h = cv.clientHeight;
+  if (!w || !h) return null;
+  cv.width = Math.round(w * DPR); cv.height = Math.round(h * DPR);
+  const center = !cv.closest(".card");   // forest cards keep their trees on a shared ground line
+  const pieces = withFrame(w, h, tree.species, () => layoutTree(tree.poems.length, tree.poems), center);
+  return { cv, tree, w, h, center, entries: pieces.map((p) => ({ p, mode: "static" })), offset: (hash(tree.id) % 1000) / 7 };
+}
+function paintPicture(pic, now) {
+  const g2 = pic.cv.getContext("2d");
+  g2.setTransform(DPR, 0, 0, DPR, 0, 0);
+  g2.clearRect(0, 0, pic.w, pic.h);
+  withFrame(pic.w, pic.h, pic.tree.species, () => {
+    drawShape(pic.tree.poems.length, windAt(now / 1000 + pic.offset));
+    drawPieces(g2, pic.entries, readShape(), now);
+  }, pic.center);
+}
+let picturePairs = [];
+function showPictures(pairs) {
+  picturePairs = pairs;
+  pictures = pairs.map(([cv, tree]) => makePicture(cv, tree)).filter(Boolean);
+  const now = performance.now();
+  pictures.forEach((pic) => paintPicture(pic, now));
+}
+
+// =====================================================================
+//  PAGE UPDATES
+// =====================================================================
+function stageName(n) {
+  if (n === 0) return "Seed";
+  if (n < 5) return "Seedling";
+  if (n < 25) return "Sapling";
+  if (n < 60) return SPECIES_INFO[SPECIES].young;
+  if (n < GOAL) return "Maturing";
+  return "Fully grown";
+}
+const completedTrees = () => garden.trees.filter((t) => t.completed);
+
+function updateGarden() {
+  const n = poems.length;
+  const tree = activeTree();
+  $("latinLabel").textContent = SPECIES_INFO[SPECIES].latin;
+  $("dayLabel").textContent = `Poem ${Math.min(n, GOAL)} / ${GOAL}`;
+  $("stageLabel").textContent = stageName(n);
+  $("openArchive").textContent = `Poems (${n})`;
+  $("openArchive").disabled = n === 0;
+  const done = completedTrees().length;
+  $("openForest").textContent = `Forest (${done})`;
+  $("openForest").style.display = done ? "" : "none";
+  const area = $("actionArea");
+  area.innerHTML = "";
+  const b = document.createElement("button");
+  b.className = "link";
+  if (tree && tree.completed) {
+    area.innerHTML = `Your ${SPECIES_INFO[SPECIES].name.toLowerCase()} is fully grown<br>`;
+    b.textContent = "Plant a new tree →";
+    b.onclick = () => openChooser(true);
+  } else {
+    b.textContent = n === 0 ? "Write your first poem →" : "Write another poem →";
+    b.onclick = openWriter;
+  }
+  area.appendChild(b);
+}
+
+const VIEWS = ["garden", "write", "archive", "choose", "forest", "treeDetail", "backup"];
+function show(id) {
+  for (const v of VIEWS) $(v).classList.toggle("hidden", v !== id);
+}
+
+// Switches the main screen to a tree (or to nothing)
+function setActive(tree) {
+  garden.active = tree ? tree.id : null;
+  poems = tree ? tree.poems : [];
+  SPECIES = tree ? tree.species : "ponderosa";
+  previewDay = null;
+  saveGarden();
+  showInstantly(poems.length, layoutTree(poems.length, poems));
+  updateGarden();
+}
+
+// =====================================================================
+//  CHOOSING A TREE
+// =====================================================================
+let picked = null;
+function openChooser(canGoBack) {
+  picked = null;
+  const box = $("choices");
+  box.innerHTML = "";
+  for (const [key, info] of Object.entries(SPECIES_INFO)) {
+    const b = document.createElement("button");
+    b.className = "choice";
+    const name = document.createElement("div"); name.className = "name"; name.textContent = info.name;
+    const latin = document.createElement("span"); latin.className = "latin"; latin.textContent = info.latin;
+    b.append(name, latin);
+    b.onclick = () => {
+      picked = key;
+      box.querySelectorAll(".choice").forEach((x) => x.classList.toggle("picked", x === b));
+      $("chooseBegin").disabled = false;
+    };
+    box.appendChild(b);
+  }
+  $("chooseBegin").disabled = true;
+  $("chooseBack").style.display = canGoBack ? "" : "none";
+  show("choose");
+}
+$("chooseBack").onclick = () => show("garden");
+$("chooseBegin").onclick = () => {
+  if (!picked) return;
+  const tree = { id: "t" + Date.now(), species: picked, started: todayString(), poems: [] };
+  garden.trees.push(tree);
+  setActive(tree);
+  show("garden");
+};
+
+// =====================================================================
+//  WRITING
+// =====================================================================
+const DRAFT = "poetree.draft";
+function openWriter() {
+  const d = JSON.parse(localStorage.getItem(DRAFT) || "{}");
+  $("title").value = d.title || "";
+  $("poem").value = d.text || "";
+  $("writeNumber").textContent = String(poems.length + 1).padStart(3, "0");
+  $("writeDate").textContent = prettyDate(todayString());
+  updateCount();
+  show("write");
+  setTimeout(() => $("poem").focus(), 300);
+}
+function updateCount() {
+  const n = wordsIn($("poem").value).length;
+  $("wordCount").textContent = `${n} word${n === 1 ? "" : "s"}`;
+  $("plant").disabled = n < 3;
+}
+for (const id of ["title", "poem"]) {
+  $(id).addEventListener("input", () => {
+    localStorage.setItem(DRAFT, JSON.stringify({ title: $("title").value, text: $("poem").value }));
+    updateCount();
+  });
+}
+$("backToTree").onclick = () => show("garden");
+
+function addPoem(poem) {
+  poems.push(poem);
+  const tree = activeTree();
+  if (tree && poems.length >= GOAL && !tree.completed) tree.completed = poem.date;
+  savePoems();
+}
+
+$("plant").onclick = async () => {
+  const text = $("poem").value.trim();
+  if (wordsIn(text).length < 3) return;
+  const poem = { date: todayString(), title: $("title").value.trim(), text, keywords: pickKeywords(text) };
+  addPoem(poem);
+  localStorage.removeItem(DRAFT);
+  await plantAnimation(poem);
+};
+
+// =====================================================================
+//  THE PLANTING ANIMATION: the poem is backspaced away,
+//  then the tree types itself out again with the new poem inside it
+// =====================================================================
+async function plantAnimation(poem) {
+  const box = $("overlayText");
+  box.innerHTML = "";
+  const lines = poem.text.split("\n");
+  box.style.fontSize = Math.max(13, Math.min(22, 30 - lines.length * 0.6)) + "px";
+  const rows = [];
+  if (poem.title) {
+    const t = document.createElement("div");
+    t.style.cssText = "font-size:1.4em;margin-bottom:0.8em;min-height:1.6em";
+    t.textContent = poem.title; box.appendChild(t); rows.push({ el: t, text: poem.title });
+  }
+  for (const line of lines) {
+    const d = document.createElement("div");
+    d.style.minHeight = "1.6em";
+    d.textContent = line; box.appendChild(d); rows.push({ el: d, text: line });
+  }
+
+  // 1. The finished poem, on its own
+  $("veil").classList.remove("hidden");
+  $("overlay").classList.remove("hidden");
+  show("garden");
+  previewDay = null;
+  updateGarden();
+  $("actionArea").innerHTML = "";
+  const next = layoutTree(poems.length, poems);
+  await wait(2600);
+
+  // 2. The poem is backspaced, every line at once
+  const longest = Math.max(...rows.map((r) => r.text.length), 1);
+  await new Promise((resolve) => {
+    const start = performance.now(), dur = clamp(longest * 28, 700, 1600);
+    function step(now) {
+      const t = Math.min(1, (now - start) / dur);
+      for (const r of rows) {
+        const keep = Math.round(r.text.length * (1 - t));
+        r.el.textContent = r.text.slice(0, keep) + (t < 1 ? "|" : "");
+      }
+      if (t < 1) requestAnimationFrame(step); else resolve();
+    }
+    requestAnimationFrame(step);
+  });
+  await wait(250);
+  $("overlay").classList.add("hidden");
+  $("veil").classList.add("hidden");
+
+  // 3. The tree types itself out around the new poem
+  await typeInto(poems.length, next);
+  updateGarden();
+}
+
+// =====================================================================
+//  POETRY BANK (poems of the tree you're growing)
+// =====================================================================
+function poemList(container, list, onOpen) {
+  container.innerHTML = "";
+  [...list].reverse().forEach((p, ri) => {
+    const i = list.length - ri;
+    const e = document.createElement("div");
+    e.className = "entry";
+    const n = document.createElement("div"); n.className = "n"; n.textContent = String(i).padStart(3, "0");
+    const t = document.createElement("div"); t.textContent = p.title || p.text.split("\n")[0];
+    e.append(n, t);
+    e.onclick = () => onOpen(p, i);
+    container.appendChild(e);
+  });
+}
+function smallLink(text, onclick) {
+  const b = document.createElement("button"); b.className = "link small"; b.textContent = text; b.onclick = onclick;
+  return b;
+}
+function poemReading(container, p, i, onBack, onEdited) {
+  container.innerHTML = "";
+  const wrap = document.createElement("div"); wrap.className = "reading";
+  const bar = document.createElement("div"); bar.className = "readbar";
+  bar.append(smallLink("← All poems", onBack), smallLink("Edit", () => poemEditing(container, p, i, onBack, onEdited)));
+  const meta = document.createElement("div"); meta.className = "meta";
+  meta.textContent = `Poem ${String(i).padStart(3, "0")} · ${prettyDate(p.date)}` + (p.edited ? ` · edited ${prettyDate(p.edited)}` : "");
+  const h = document.createElement("h2"); h.textContent = p.title || "Untitled";
+  const body = document.createElement("div"); body.className = "body"; body.textContent = p.text;
+  wrap.append(bar, meta, h, body);
+  container.appendChild(wrap);
+}
+// Editing a poem (there's no deleting: every poem stays part of its tree)
+function poemEditing(container, p, i, onBack, onEdited) {
+  container.innerHTML = "";
+  const wrap = document.createElement("div"); wrap.className = "reading";
+  const meta = document.createElement("div"); meta.className = "meta"; meta.textContent = `Editing poem ${String(i).padStart(3, "0")}`;
+  const title = document.createElement("input"); title.className = "editTitle"; title.value = p.title || ""; title.placeholder = "Untitled"; title.maxLength = 80;
+  const text = document.createElement("textarea"); text.className = "editText"; text.value = p.text;
+  const fit = () => { text.style.height = "auto"; text.style.height = text.scrollHeight + 4 + "px"; };
+  text.addEventListener("input", fit);
+  const note = document.createElement("div"); note.className = "meta"; note.style.marginTop = "10px";
+  const bar = document.createElement("div"); bar.className = "readbar";
+  const cancel = smallLink("Cancel", () => poemReading(container, p, i, onBack, onEdited));
+  const save = smallLink("Save changes", () => {
+    const t = text.value.trim();
+    if (wordsIn(t).length < 3) { note.textContent = "A poem needs at least 3 words."; return; }
+    const changed = t !== p.text || title.value.trim() !== (p.title || "");
+    if (changed) {
+      p.text = t;
+      p.title = title.value.trim();
+      p.keywords = pickKeywords(t);
+      p.edited = todayString();
+      saveGarden();
+      onEdited && onEdited();
+    }
+    poemReading(container, p, i, onBack, onEdited);
+  });
+  bar.append(cancel, save);
+  wrap.append(meta, title, text, note, bar);
+  container.appendChild(wrap);
+  requestAnimationFrame(() => { fit(); text.focus(); });
+}
+function openArchive() {
+  $("archiveLabel").textContent = `Your ${SPECIES_INFO[SPECIES].name.toLowerCase()}'s poems`;
+  const listBox = $("archiveList");
+  let edited = false;
+  const showList = () => poemList(listBox, poems, (p, i) => poemReading(listBox, p, i, showList, () => { edited = true; }));
+  showList();
+  $("archiveBack").onclick = () => {
+    show("garden");
+    // if a poem changed, the tree retypes itself with the new words
+    if (edited) { previewDay = null; typeInto(poems.length, layoutTree(poems.length, poems)); updateGarden(); }
+  };
+  show("archive");
+}
+$("openArchive").onclick = openArchive;
+
+// =====================================================================
+//  BACKUP: download everything as a file, or bring it back from one
+// =====================================================================
+const LAST_BACKUP = "poetree.lastBackup";
+function backupStatus(msg) {
+  const last = localStorage.getItem(LAST_BACKUP);
+  const trees = garden.trees.length, count = garden.trees.reduce((s, t) => s + t.poems.length, 0);
+  $("backupStatus").textContent = msg || `${trees} tree${trees === 1 ? "" : "s"} · ${count} poem${count === 1 ? "" : "s"} · ` +
+    (last ? `last backup ${prettyDate(last)}` : "never backed up");
+}
+function openBackup() { backupStatus(); show("backup"); }
+$("openBackup").onclick = openBackup;
+$("backupBack").onclick = () => (activeTree() ? show("garden") : openChooser(false));
+
+$("downloadBackup").onclick = () => {
+  const data = { app: "poetree", version: 1, exported: new Date().toISOString(), garden };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `poetree-backup-${todayString()}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  localStorage.setItem(LAST_BACKUP, todayString());
+  backupStatus();
+};
+
+$("restoreBackup").onclick = () => $("restoreFile").click();
+$("restoreFile").onchange = async (ev) => {
+  const file = ev.target.files[0];
+  ev.target.value = "";
+  if (!file) return;
+  let data;
+  try { data = JSON.parse(await file.text()); } catch (e) { data = null; }
+  const g = data && data.app === "poetree" && data.garden;
+  if (g) updateOldSpecies(g);
+  const valid = g && Array.isArray(g.trees) && g.trees.every((t) => SPECIES_INFO[t.species] && Array.isArray(t.poems) &&
+    t.poems.every((p) => typeof p.text === "string" && typeof p.date === "string"));
+  if (!valid) { backupStatus("That file isn't a Poetree backup."); return; }
+  const count = g.trees.reduce((s, t) => s + t.poems.length, 0);
+  if (!confirm(`Restore ${g.trees.length} tree(s) and ${count} poem(s) from this backup?\n\nThis replaces the trees and poems currently in this browser.`)) return;
+  // make sure every poem has its tree words, even from an older backup
+  for (const t of g.trees) for (const p of t.poems) if (!Array.isArray(p.keywords)) p.keywords = pickKeywords(p.text);
+  garden = { trees: g.trees, active: g.trees.some((t) => t.id === g.active) ? g.active : null };
+  saveGarden();
+  setActive(activeTree());
+  backupStatus(`Restored ${g.trees.length} tree(s) and ${count} poem(s).`);
+};
+
+// Ask the browser to treat Poetree's saved data as important, so it isn't cleared to save space
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+
+// =====================================================================
+//  THE FOREST (every tree you've finished)
+// =====================================================================
+function openForest() {
+  const grove = $("grove");
+  grove.innerHTML = "";
+  const done = completedTrees();
+  if (!done.length) {
+    const e = document.createElement("div"); e.className = "empty";
+    e.textContent = "Your finished trees will grow here.";
+    grove.appendChild(e);
+  }
+  const pairs = [];
+  for (const tree of done) {
+    const info = SPECIES_INFO[tree.species];
+    const card = document.createElement("div"); card.className = "card";
+    const cv = document.createElement("canvas");
+    const name = document.createElement("div"); name.className = "name"; name.textContent = info.name;
+    const latin = document.createElement("span"); latin.className = "latin"; latin.textContent = info.latin;
+    const dates = document.createElement("div"); dates.className = "dates";
+    dates.textContent = `${tree.poems.length} poems · ${shortDate(tree.started)} – ${shortDate(tree.completed)}`;
+    card.append(cv, name, latin, dates);
+    card.onclick = () => openTreeDetail(tree);
+    grove.appendChild(card);
+    pairs.push([cv, tree]);
+  }
+  show("forest");
+  requestAnimationFrame(() => showPictures(pairs));
+}
+$("openForest").onclick = openForest;
+$("forestBack").onclick = () => show("garden");
+
+function openTreeDetail(tree) {
+  const info = SPECIES_INFO[tree.species];
+  $("detailName").textContent = info.name;
+  $("detailLatin").textContent = info.latin;
+  const box = $("detailPoems");
+  const head = () => {
+    const d = document.createElement("div"); d.className = "reading";
+    const meta = document.createElement("div"); meta.className = "meta";
+    meta.textContent = `${tree.poems.length} poems · ${prettyDate(tree.started)} – ${prettyDate(tree.completed)}`;
+    meta.style.marginBottom = "18px";
+    d.appendChild(meta);
+    return d;
+  };
+  // after an edit, redraw the tree with the poem's new words
+  const redrawTree = () => showPictures([[$("detailCanvas"), tree]]);
+  const showList = () => {
+    poemList(box, tree.poems, (p, i) => poemReading(box, p, i, showList, redrawTree));
+    box.prepend(head());
+  };
+  showList();
+  show("treeDetail");
+  requestAnimationFrame(() => showPictures([[$("detailCanvas"), tree]]));
+}
+$("detailBack").onclick = openForest;
+
+// =====================================================================
+//  TESTING TOOLS (press Shift + D, or add ?dev to the address)
+// =====================================================================
+function fillerPoems(count, start) {
+  const out = [];
+  for (let i = start; i < count; i++) {
+    const r = rng(i * 7919 + 1);
+    const kw = [];
+    while (kw.length < 12) { const w = pick(r, FILLER_WORDS); if (!kw.includes(w)) kw.push(w); }
+    out.push({ keywords: kw });
+  }
+  return out;
+}
+let previewDay = null;
+const previewList = (m) => poems.slice(0, m).concat(fillerPoems(m, poems.length));
+
+// adds real (saved) sample poems to the tree you're growing, for testing
+function addSamplePoems(count) {
+  const tree = activeTree();
+  if (!tree || tree.completed) return;
+  for (let k = 0; k < count && poems.length < GOAL; k++) {
+    const r = rng(Date.now() + k * 31);
+    const words = Array.from({ length: 14 }, () => pick(r, FILLER_WORDS));
+    const text = [words.slice(0, 5), words.slice(5, 9), words.slice(9)].map((l) => l.join(" ")).join("\n");
+    addPoem({ date: todayString(), title: "Sample", text, keywords: pickKeywords(text), sample: true });
+  }
+  previewDay = null;
+  typeInto(poems.length, layoutTree(poems.length, poems));
+  updateGarden();
+  $("devSlider").value = poems.length; $("devValue").textContent = poems.length;
+}
+
+document.addEventListener("keydown", (ev) => {
+  if (!ev.shiftKey || ev.key.toLowerCase() !== "d" || ev.metaKey || ev.ctrlKey) return;
+  if (["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName)) return;
+  if ($("dev").style.display === "flex") {
+    $("dev").style.display = "none";
+    previewDay = null;
+    showInstantly(poems.length, layoutTree(poems.length, poems));
+    updateGarden();
+  } else {
+    setupDev();
+  }
+});
+
+function setupDev() {
+  $("dev").style.display = "flex";
+  const slider = $("devSlider");
+  slider.value = poems.length;
+  $("devValue").textContent = poems.length;
+  slider.oninput = () => { $("devValue").textContent = slider.value; };
+  slider.onchange = () => {
+    const m = Number(slider.value);
+    previewDay = m;
+    $("devValue").textContent = m;
+    $("dayLabel").textContent = `Preview ${m} / ${GOAL}`;
+    $("stageLabel").textContent = stageName(m);
+    typeInto(m, layoutTree(m, previewList(m)));
+  };
+  $("devAdd1").onclick = () => addSamplePoems(1);
+  $("devAdd10").onclick = () => addSamplePoems(10);
+  $("devReset").onclick = () => {
+    if (confirm("Delete all trees and poems and start over?")) {
+      localStorage.removeItem(STORAGE); localStorage.removeItem(OLD_STORAGE); localStorage.removeItem(DRAFT);
+      location.reload();
+    }
+  };
+}
+
+// =====================================================================
+//  START (and redraw if the window changes size)
+// =====================================================================
+function redraw() {
+  sizeCanvas();
+  const m = previewDay ?? poems.length;
+  showInstantly(m, layoutTree(m, previewDay !== null ? previewList(m) : poems));
+}
+let resizeTimer;
+new ResizeObserver(() => {
+  if (stage.clientWidth === SW && stage.clientHeight === SH) return;
+  clearTimeout(resizeTimer); resizeTimer = setTimeout(redraw, 150);
+}).observe(stage);
+saveGarden();
+redraw();
+updateGarden();
+if (!activeTree()) openChooser(false);
+if (DEV) setupDev();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
