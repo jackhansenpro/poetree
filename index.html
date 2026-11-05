@@ -39,13 +39,25 @@
   #tree { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
   /* Choosing a tree */
-  #choose { display: flex; align-items: center; justify-content: center; z-index: 4; }
-  .choices { display: flex; flex-wrap: wrap; justify-content: center; gap: 28px clamp(28px, 5vw, 80px); max-width: 1100px; padding: 0 40px; }
-  .choice { all: unset; cursor: pointer; text-align: center; padding: 18px 6px; border-bottom: 1px solid transparent; transition: color 0.2s, border-color 0.2s; }
-  .choice .name { font-family: var(--serif); font-size: clamp(22px, 2.6vw, 32px); }
-  .choice .latin { display: block; margin-top: 8px; color: var(--muted); font-size: 16px; }
-  .choices:hover .choice:not(:hover):not(.picked) { color: #b5afa2; }
-  .choice.picked { border-bottom-color: var(--ink); }
+  #choose { z-index: 4; }
+  /* names in two columns, the grown tree previewed between them */
+  .chooser { position: absolute; inset: 64px 0 56px 0; display: grid; grid-template-columns: auto 1fr auto; }
+  .choices { display: flex; flex-direction: column; justify-content: center; gap: clamp(8px, 2.2vh, 26px); padding: 0 clamp(24px, 3.5vw, 64px); grid-row: 1; position: relative; z-index: 1; }
+  .choices.left { text-align: left; align-items: flex-start; grid-column: 1; }
+  .choices.right { text-align: right; align-items: flex-end; grid-column: 3; }
+  .choice { pointer-events: auto; }
+  .choice { all: unset; cursor: pointer; padding: 6px 0; transition: opacity 0.35s, color 0.3s; }
+  .choice .latin { transition: color 0.3s; }
+  .choice .name { font-family: var(--serif); font-size: clamp(18px, 1.9vw, 28px); }
+  .choice .latin { display: block; margin-top: 4px; color: var(--muted); font-size: clamp(13px, 1vw, 15px); }
+  .chooser.previewing .choice:not(.active) { color: #c4beb1; }
+  .chooser.previewing .choice:not(.active) .latin { color: #d0cabe; }
+  /* the preview canvas spans the whole width; the tree is sized to fit between the names */
+  .previewBox { position: relative; min-width: 0; grid-row: 1; grid-column: 1 / -1; }
+  #previewCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: 0; transition: opacity 0.45s; }
+  .chooser.previewing #previewCanvas { opacity: 1; }
+  #chooseBegin { display: none; }
+  #chooseBegin.show { display: inline; }
 
   /* Writing page */
   #write { display: flex; justify-content: center; z-index: 4; }
@@ -114,12 +126,18 @@
   .latin { font-size: 13px; }
   .stack { gap: 8px; }
   #stage { inset: 70px 0 110px 0; }
-  #choose { align-items: flex-start; overflow: auto; }
+  #choose { overflow: auto; }
   #choose .corner { position: fixed; background: var(--paper); padding: 4px 6px; margin: -4px -6px; }
-  .choices { padding: 90px 20px 110px; gap: 6px 20px; }
-  .choice { padding: 12px 4px; }
+  .chooser { position: static; display: block; padding: 80px 20px 110px; }
+  .choices { padding: 0; gap: 6px; }
+  .choices.left, .choices.right { text-align: center; align-items: center; }
+  .choice { padding: 8px 4px; }
   .choice .name { font-size: 22px; }
   .choice .latin { font-size: 14px; margin-top: 4px; }
+  /* on a phone the preview takes the whole screen, and the list steps aside */
+  .previewBox { position: fixed; inset: 70px 0 110px 0; pointer-events: none; }
+  .chooser.previewing .choices { opacity: 0; pointer-events: none; }
+  .chooser.previewing .previewBox { pointer-events: auto; }
   .sheet { width: calc(100% - 40px); padding: 80px 0 100px; }
   #title { font-size: 26px; }
   #poem { font-size: 17px; }
@@ -151,10 +169,14 @@
 
 <!-- ============ CHOOSE A TREE ============ -->
 <section class="view hidden" id="choose">
-  <div class="corner tl">Poetree<br><span class="muted">Choose a tree to grow</span></div>
-  <div class="corner bl"><button class="link" id="chooseBack">← Back</button></div>
-  <div class="corner br"><button class="link" id="chooseBegin" disabled>Begin growing →</button></div>
-  <div class="choices" id="choices"></div>
+  <div class="corner tl">Poetree<br><span class="muted" id="chooseLabel">Choose a tree to grow</span></div>
+  <div class="corner bl stack"><button class="link" id="chooseAll" style="display:none">← All trees</button><button class="link" id="chooseBack">← Back</button></div>
+  <div class="corner br"><button class="link" id="chooseBegin">Plant this tree →</button></div>
+  <div class="chooser" id="chooser">
+    <div class="choices left" id="choicesL"></div>
+    <div class="previewBox"><canvas id="previewCanvas"></canvas></div>
+    <div class="choices right" id="choicesR"></div>
+  </div>
 </section>
 
 <!-- ============ WRITING PAGE ============ -->
@@ -380,10 +402,11 @@ function sizeCanvas() {
 }
 // Temporarily draw at another size / species (used for the forest pictures)
 let CENTER_TREE = true;             // lift a narrow-screen tree to the middle (off for forest cards)
-function withFrame(w, h, species, fn, center = true) {
-  const saved = [SW, SH, SPECIES, CENTER_TREE];
-  SW = w; SH = h; SPECIES = species; CENTER_TREE = center; sizeShapeMap();
-  try { return fn(); } finally { [SW, SH, SPECIES, CENTER_TREE] = saved; sizeShapeMap(); }
+let WIDTH_ROOM = null;              // width the tree may use, if less than the whole frame (the chooser preview)
+function withFrame(w, h, species, fn, center = true, room = null) {
+  const saved = [SW, SH, SPECIES, CENTER_TREE, WIDTH_ROOM];
+  SW = w; SH = h; SPECIES = species; CENTER_TREE = center; WIDTH_ROOM = room; sizeShapeMap();
+  try { return fn(); } finally { [SW, SH, SPECIES, CENTER_TREE, WIDTH_ROOM] = saved; sizeShapeMap(); }
 }
 
 // =====================================================================
@@ -405,13 +428,14 @@ function drawShape(n, wind = null) {
   const young = clamp(1 - g / 0.45, 0, 1);        // 1 = seedling, 0 = grown up
   const cx = SW / 2;
   // how tall the tree is on screen; oaks are shorter and wider
-  const heightAt = (gg) => ({ ponderosa: 0.5 + 0.48 * Math.sqrt(gg), blueoak: 0.45 + 0.37 * Math.sqrt(gg), sugarmaple: 0.52 + 0.46 * Math.sqrt(gg),
+  // (the pine's top tuft of needles reaches above S, so its height leaves room for it)
+  const heightAt = (gg) => ({ ponderosa: 0.46 + 0.42 * Math.sqrt(gg), blueoak: 0.45 + 0.37 * Math.sqrt(gg), sugarmaple: 0.52 + 0.46 * Math.sqrt(gg),
     redwood: 0.52 + 0.46 * Math.sqrt(gg), sycamore: 0.48 + 0.4 * Math.sqrt(gg),
     liveoak: 0.42 + 0.36 * Math.sqrt(gg), douglasfir: 0.5 + 0.47 * Math.sqrt(gg), bluegum: 0.52 + 0.46 * Math.sqrt(gg),
     madrone: 0.48 + 0.42 * Math.sqrt(gg), baylaurel: 0.48 + 0.42 * Math.sqrt(gg) })[SPECIES];
   const widthLimit = { ponderosa: 1.0, blueoak: 1.45, sugarmaple: 1.12, redwood: 0.6, sycamore: 1.35,
     liveoak: 1.6, douglasfir: 0.75, bluegum: 0.95, madrone: 1.25, baylaurel: 1.15 }[SPECIES];
-  const sizeAt = (gg) => Math.max(40, Math.min(SH * heightAt(gg), SH - 16, (SW - 30) / widthLimit));
+  const sizeAt = (gg) => Math.max(40, Math.min(SH * heightAt(gg), SH - 16, ((WIDTH_ROOM || SW) - 30) / widthLimit));
   const S = sizeAt(g);
   // On narrow screens (phones) the tree is limited by width and would sit low with empty space above.
   // Raise the ground so the grown tree ends up centered. The ground is the same at every age,
@@ -426,7 +450,13 @@ function drawShape(n, wind = null) {
   const sway = (x, y) => {
     if (!wind) return [x, y];
     const h = clamp((ground - y) / S, 0, 1.2);
-    return [x + wind.bend * A * h * h + wind.swirl * A * Math.sin(Math.PI * h) * (1 - 2 * h), y];
+    let bend = wind.bend;
+    if (wind.breeze) {
+      // the mouse's push is strongest near the mouse, but the whole tree feels some of it
+      const br = wind.breeze, R = S * 0.32, d2 = (x - br.x) ** 2 + (y - br.y) ** 2;
+      bend = clamp(bend + br.s * (0.35 + 0.65 * Math.exp(-d2 / (2 * R * R))), -MAX_BEND, MAX_BEND);
+    }
+    return [x + bend * A * h * h + wind.swirl * A * Math.sin(Math.PI * h) * (1 - 2 * h), y];
   };
   const flutter = (seed, amount) => {
     if (!wind) return [0, 0];
@@ -1004,6 +1034,41 @@ function windAt(sec) {
   return { time: sec, bend, swirl, flutterBase, flutterEv };
 }
 
+// ---- the mouse as wind: moving across a tree blows it the way the mouse is going ----
+// Each canvas keeps its own breeze. The push builds up with how far the mouse travels,
+// then dies away; the tree follows it on a spring, so it leans, overshoots a little, and settles.
+const MAX_BEND = 5;                     // trees are laid out to reach this far (see layoutTree)
+const breezes = new WeakMap();
+function breezeFor(cv) {
+  let b = breezes.get(cv);
+  if (b) return b;
+  b = { push: 0, s: 0, v: 0, energy: 0, x: -1e4, y: 0, last: null, stepped: performance.now() };
+  breezes.set(cv, b);
+  cv.addEventListener("pointermove", (e) => {
+    const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+    if (b.last && e.pointerType !== "touch") {
+      const dx = x - b.last.x, dy = y - b.last.y;
+      b.push = clamp(b.push + dx * 0.025, -MAX_BEND, MAX_BEND);
+      b.energy = Math.min(2.6, b.energy + Math.hypot(dx, dy) * 0.012);
+    }
+    b.last = { x, y }; b.x = x; b.y = y;
+  });
+  cv.addEventListener("pointerleave", () => { b.last = null; });
+  return b;
+}
+function windFor(cv, sec, now) {
+  const w = windAt(sec), b = breezeFor(cv);
+  const dt = Math.min(0.1, (now - b.stepped) / 1000);
+  b.stepped = now;
+  b.push *= Math.exp(-dt / 0.7);
+  b.energy *= Math.exp(-dt / 0.6);
+  b.v += (28 * (b.push - b.s) - 4.5 * b.v) * dt;
+  b.s += b.v * dt;
+  if (Math.abs(b.s) > 0.01 || b.energy > 0.01) w.breeze = { s: b.s, x: b.x, y: b.y };
+  w.flutterEv += b.energy;
+  return w;
+}
+
 // =====================================================================
 //  POURING WORDS INTO THE SHAPE
 // =====================================================================
@@ -1082,7 +1147,7 @@ function layoutTree(n, list) {
   if (n <= 0 || SW < 10 || SH < 10) { if (SW >= 10) drawShape(0); return []; }
   // Words are laid out over everywhere the swaying tree can reach,
   // so that when the wind moves it, letters appear at its edges.
-  const poses = [null, { time: 0, bend: -4, swirl: 0, flutterBase: 1, flutterEv: 1 }, { time: 0, bend: 4, swirl: 0, flutterBase: -1, flutterEv: -1 }];
+  const poses = [null, { time: 0, bend: -MAX_BEND, swirl: 0, flutterBase: 1, flutterEv: 1 }, { time: 0, bend: MAX_BEND, swirl: 0, flutterBase: -1, flutterEv: -1 }];
   const maps = poses.map((w) => { drawShape(n, w); return readShape(); });
   const density = (x, y) => Math.max(maps[0](x, y), maps[1](x, y), maps[2](x, y));
   const pieces = [];
@@ -1203,13 +1268,23 @@ function paint(density, now) {
   ctx.drawImage(paper, 0, 0);
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   drawPieces(ctx, view.entries, density, now);
-  if (!view.entries.length && view.n === 0) {
-    ctx.font = `italic 15px Georgia, serif`;
-    ctx.fillStyle = "#8a857a";
-    ctx.textAlign = "center";
-    ctx.fillText("a seed, waiting for its first poem", SW / 2, SH - 30);
-    ctx.textAlign = "left";
-  }
+  if (!view.entries.length && view.n === 0) paintSeed();
+}
+
+// =====================================================================
+//  THE SEED: before the first poem, a single comma sits where the tree
+//  will grow (a pause, waiting for what comes next), above a caption.
+// =====================================================================
+function paintSeed() {
+  ctx.save();
+  ctx.fillStyle = INK;
+  ctx.textAlign = "center";
+  ctx.font = `${Math.round(FONT_SIZE * 2.2)}px "Times New Roman", Times, serif`;
+  ctx.fillText(",", SW / 2, SH - 54);
+  ctx.font = `italic 15px Georgia, serif`;
+  ctx.fillStyle = "#8a857a";
+  ctx.fillText("a seed, waiting for its first poem", SW / 2, SH - 30);
+  ctx.restore();
 }
 
 function showInstantly(n, pieces) {
@@ -1259,7 +1334,7 @@ function loop(now) {
   if (now - lastFrame < 32) return;
   // the forest or a finished tree is open: sway those instead
   if ($("garden").classList.contains("hidden")) {
-    const open = !$("forest").classList.contains("hidden") || !$("treeDetail").classList.contains("hidden");
+    const open = ["forest", "treeDetail", "choose"].some((id) => !$(id).classList.contains("hidden"));
     if (open && picturePairs.length) {
       // safety net: if a picture was set up before it had a size (or its size changed), set it up again
       const stale = pictures.length < picturePairs.length ||
@@ -1273,29 +1348,35 @@ function loop(now) {
   lastFrame = now;
   // safety net: if the page was hidden while loading, the tree can come up empty, so lay it out again
   if (!view.pieces.length && view.n > 0 && now > view.end && now - lastRetry > 1000) { lastRetry = now; redraw(); }
-  drawShape(view.n, windAt(now / 1000));
+  drawShape(view.n, windFor(canvas, now / 1000, now));
   paint(readShape(), now);
 }
 
 // Finished trees in the forest and on their own page, swaying in the wind too.
 // Each one is laid out once, then redrawn every frame with its own wind timing.
 let pictures = [];
+const previewLayouts = new Map();
 function makePicture(cv, tree) {
   const w = cv.clientWidth, h = cv.clientHeight;
   if (!w || !h) return null;
   cv.width = Math.round(w * DPR); cv.height = Math.round(h * DPR);
   const center = !cv.closest(".card");   // forest cards keep their trees on a shared ground line
-  const pieces = withFrame(w, h, tree.species, () => layoutTree(tree.poems.length, tree.poems), center);
-  return { cv, tree, w, h, center, entries: pieces.map((p) => ({ p, mode: "static" })), offset: (hash(tree.id) % 1000) / 7 };
+  // preview trees on the chooser are laid out once per size, so hovering between names stays quick
+  const room = cv.id === "previewCanvas" ? previewRoom() : null;
+  const cacheKey = tree.id.startsWith("preview") ? `${tree.id}|${w}|${h}|${room}` : null;
+  const pieces = (cacheKey && previewLayouts.get(cacheKey)) ||
+    withFrame(w, h, tree.species, () => layoutTree(tree.poems.length, tree.poems), center, room);
+  if (cacheKey) previewLayouts.set(cacheKey, pieces);
+  return { cv, tree, w, h, center, room, entries: pieces.map((p) => ({ p, mode: "static" })), offset: (hash(tree.id) % 1000) / 7 };
 }
 function paintPicture(pic, now) {
   const g2 = pic.cv.getContext("2d");
   g2.setTransform(DPR, 0, 0, DPR, 0, 0);
   g2.clearRect(0, 0, pic.w, pic.h);
   withFrame(pic.w, pic.h, pic.tree.species, () => {
-    drawShape(pic.tree.poems.length, windAt(now / 1000 + pic.offset));
+    drawShape(pic.tree.poems.length, windFor(pic.cv, now / 1000 + pic.offset, now));
     drawPieces(g2, pic.entries, readShape(), now);
-  }, pic.center);
+  }, pic.center, pic.room);
 }
 let picturePairs = [];
 function showPictures(pairs) {
@@ -1363,36 +1444,74 @@ function setActive(tree) {
 // =====================================================================
 //  CHOOSING A TREE
 // =====================================================================
-let picked = null;
+// With a mouse: hovering a name shows that tree fully grown, and clicking it plants it.
+// With a finger: the first tap shows the tree, and "Plant this tree" (or a second tap) plants it.
+let previewing = null, lastPointer = "mouse";
+const previewTrees = {};
+function previewTreeFor(key) {
+  if (!previewTrees[key]) previewTrees[key] = { id: "preview-" + key, species: key, poems: fillerPoems(GOAL, 0) };
+  return previewTrees[key];
+}
+// room for the previewed tree: the space between the two columns of (greyed-out) names
+function previewRoom() {
+  if (window.innerWidth < 600) return null;
+  const [l, , r] = [...$("chooser").children].map((e) => e.getBoundingClientRect().width);
+  return Math.round($("chooser").clientWidth - l - r);
+}
+function previewTree(key) {
+  if (key === previewing) return;
+  previewing = key;
+  $("chooser").classList.toggle("previewing", !!key);
+  document.querySelectorAll("#chooser .choice").forEach((b) => b.classList.toggle("active", b.dataset.key === key));
+  $("chooseBegin").classList.toggle("show", !!key && lastPointer === "touch");   // a mouse just clicks the name
+  $("chooseLabel").textContent = key ? SPECIES_INFO[key].name : "Choose a tree to grow";
+  $("chooseAll").style.display = key && lastPointer === "touch" && window.innerWidth < 600 ? "" : "none";
+  // the last tree stays drawn while it fades out
+  if (key) showPictures([[$("previewCanvas"), previewTreeFor(key)]]);
+}
 function openChooser(canGoBack) {
-  picked = null;
-  const box = $("choices");
-  box.innerHTML = "";
-  for (const [key, info] of Object.entries(SPECIES_INFO)) {
+  pictures = []; picturePairs = [];
+  $("choicesL").innerHTML = ""; $("choicesR").innerHTML = "";
+  Object.entries(SPECIES_INFO).forEach(([key, info], i) => {
     const b = document.createElement("button");
     b.className = "choice";
+    b.dataset.key = key;
     const name = document.createElement("div"); name.className = "name"; name.textContent = info.name;
     const latin = document.createElement("span"); latin.className = "latin"; latin.textContent = info.latin;
     b.append(name, latin);
     b.onclick = () => {
-      picked = key;
-      box.querySelectorAll(".choice").forEach((x) => x.classList.toggle("picked", x === b));
-      $("chooseBegin").disabled = false;
+      if (lastPointer !== "touch" || previewing === key) plantTree(key);
+      else previewTree(key);
     };
-    box.appendChild(b);
-  }
-  $("chooseBegin").disabled = true;
+    $(i < 5 ? "choicesL" : "choicesR").appendChild(b);
+  });
+  previewing = "";
+  previewTree(null);
   $("chooseBack").style.display = canGoBack ? "" : "none";
   show("choose");
 }
+$("choose").addEventListener("pointerdown", (e) => { lastPointer = e.pointerType; });
+// with a mouse, a tree shows only while its name is hovered
+$("choose").addEventListener("pointerover", (e) => {
+  if (e.pointerType === "touch") return;
+  const choice = e.target.closest(".choice");
+  if (choice) previewTree(choice.dataset.key);
+});
+$("choose").addEventListener("pointerout", (e) => {
+  if (e.pointerType === "touch") return;
+  const choice = e.target.closest(".choice");
+  if (choice && !choice.contains(e.relatedTarget)) previewTree(null);
+});
+$("chooseAll").onclick = () => previewTree(null);
 $("chooseBack").onclick = () => show("garden");
-$("chooseBegin").onclick = () => {
-  if (!picked) return;
-  const tree = { id: "t" + Date.now(), species: picked, started: todayString(), poems: [] };
+$("chooseBegin").onclick = () => { if (previewing) plantTree(previewing); };
+
+function plantTree(key) {
+  const tree = { id: "t" + Date.now(), species: key, started: todayString(), poems: [] };
   garden.trees.push(tree);
   setActive(tree);
   show("garden");
-};
+}
 
 // =====================================================================
 //  WRITING
